@@ -7,7 +7,7 @@ Copy everything below the line into the implementing agent.
 You are implementing **Phase 1 (offline MVP)** of an Android app, "All-in-One Reminder", in the GitHub repo `VirajP4595/AllInOneReminder`. It is a family health reminder app: medicines, injections, water, food, exercise and appointments, with **full-screen alarms** that must ring reliably on a locked phone.
 
 ## Source of truth
-Read `docs/PLAN.md` in full before writing code. It is on the `main` branch, or on `claude/great-goldberg-dn0f1n` if `main` doesn't have it yet; base your work on whichever branch has it.
+Base all work on the **`main`** branch. Read `docs/PLAN.md` in full before writing code, then `CLAUDE.md`, `docs/DECISIONS.md`, `docs/TESTING.md` and `.github/pull_request_template.md`.
 - **§12–§19 are your binding spec** for Phase 1.
 - §0–§11 are context. Do **not** build anything from Phases 2–4.
 - If the spec is ambiguous, choose the safer behaviour for medication (never silently drop, duplicate or shift a dose), record the decision in `docs/DECISIONS.md`, and list it under "Open questions" in the PR description.
@@ -29,7 +29,8 @@ Read `docs/PLAN.md` in full before writing code. It is on the `main` branch, or 
 - `minSdk 30`, latest stable `targetSdk`. Kotlin + Jetpack Compose + Hilt + Room. Use `java.time` only.
 - Use the latest stable library versions at build time, pinned in the version catalog. Verify APIs against current Android documentation instead of relying on memory, especially exact alarms, full-screen intent and foreground-service type rules for the target SDK.
 - Never weaken, skip or delete a test to make CI pass.
-- Keep commits small, with clear messages. Do not push to `main` directly. Do not merge your own PRs.
+- Keep commits small, with clear messages. **Never push to `main`**: branch protection is not enabled yet, so this rule is on you. Do not merge your own PRs.
+- Release-signing secrets (`KEYSTORE_BASE64`, `KEYSTORE_PASSWORD`, `KEY_ALIAS`, `KEY_PASSWORD`) are **not configured yet**. M6 must detect their absence and produce a debug-signed APK without failing, and must sign automatically once they are added. Never generate or commit a keystore yourself.
 
 ## Each PR description must contain
 - **Summary** of what was built, mapped to the spec sections
