@@ -143,7 +143,7 @@ class MealAnchorRepository(
     suspend fun updateAnchor(anchor: MealAnchor, deviceId: String) {
         val now = System.currentTimeMillis()
         val updated = anchor.copy(updatedAt = now)
-        mealAnchorDao.update(updated.toEntity())
+        mealAnchorDao.insert(updated.toEntity())
         changeLogWriter.recordChange(
             "meal_anchor",
             anchor.id,
@@ -334,6 +334,43 @@ class OccurrenceRepository(
 
     suspend fun updateOccurrence(occurrence: Occurrence) {
         occurrenceDao.update(occurrence.toEntity())
+    }
+
+    suspend fun getByIdsSync(ids: List<String>): List<Occurrence> =
+        occurrenceDao.getByIdsSync(ids).map { it.toDomain() }
+
+    suspend fun markTakenTargeted(id: String, actedAt: Long, note: String? = null): Boolean {
+        val count = occurrenceDao.markTakenTargeted(id, actedAt, actedAt, note)
+        return count > 0
+    }
+
+    suspend fun markSkippedTargeted(id: String, actedAt: Long, skipReason: String?, note: String? = null): Boolean {
+        val count = occurrenceDao.markSkippedTargeted(id, actedAt, actedAt, skipReason, note)
+        return count > 0
+    }
+
+    suspend fun snoozeTargeted(id: String, newDueAt: Long): Boolean {
+        val now = System.currentTimeMillis()
+        val count = occurrenceDao.snoozeTargeted(id, newDueAt, now)
+        return count > 0
+    }
+
+    suspend fun deferMealTargeted(id: String, newDueAt: Long): Boolean {
+        val now = System.currentTimeMillis()
+        val count = occurrenceDao.deferMealTargeted(id, newDueAt, now)
+        return count > 0
+    }
+
+    suspend fun markMissedTargeted(id: String): Boolean {
+        val now = System.currentTimeMillis()
+        val count = occurrenceDao.markMissedTargeted(id, now)
+        return count > 0
+    }
+
+    suspend fun markSupersededTargeted(ids: List<String>): Int {
+        if (ids.isEmpty()) return 0
+        val now = System.currentTimeMillis()
+        return occurrenceDao.markSupersededTargeted(ids, now)
     }
 }
 
