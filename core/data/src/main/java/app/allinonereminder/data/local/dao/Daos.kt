@@ -35,8 +35,14 @@ interface ProfileDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insert(profile: ProfileEntity)
 
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertAll(profiles: List<ProfileEntity>)
+
     @Update
     suspend fun update(profile: ProfileEntity)
+
+    @Query("DELETE FROM profile")
+    suspend fun deleteAll()
 
     @Query("UPDATE profile SET deletedAt = :deletedAt, updatedAt = :deletedAt WHERE id = :id")
     suspend fun softDelete(id: String, deletedAt: Long)
@@ -61,6 +67,9 @@ interface MealAnchorDao {
 
     @Update
     suspend fun update(anchor: MealAnchorEntity)
+
+    @Query("DELETE FROM meal_anchor")
+    suspend fun deleteAll()
 }
 
 @Dao
@@ -86,8 +95,14 @@ interface ItemDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insert(item: ItemEntity)
 
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertAll(items: List<ItemEntity>)
+
     @Update
     suspend fun update(item: ItemEntity)
+
+    @Query("DELETE FROM item")
+    suspend fun deleteAll()
 
     @Query("UPDATE item SET deletedAt = :deletedAt, updatedAt = :deletedAt WHERE id = :id")
     suspend fun softDelete(id: String, deletedAt: Long)
@@ -106,6 +121,12 @@ interface ItemPhotoDao {
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insert(photo: ItemPhotoEntity)
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertAll(photos: List<ItemPhotoEntity>)
+
+    @Query("DELETE FROM item_photo")
+    suspend fun deleteAll()
 
     @Query("UPDATE item_photo SET deletedAt = :deletedAt WHERE id = :id")
     suspend fun softDelete(id: String, deletedAt: Long)
@@ -131,8 +152,14 @@ interface ScheduleDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insert(schedule: ScheduleEntity)
 
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertAll(schedules: List<ScheduleEntity>)
+
     @Update
     suspend fun update(schedule: ScheduleEntity)
+
+    @Query("DELETE FROM schedule")
+    suspend fun deleteAll()
 
     @Query("UPDATE schedule SET deletedAt = :deletedAt, updatedAt = :deletedAt WHERE id = :id")
     suspend fun softDelete(id: String, deletedAt: Long)
@@ -166,6 +193,9 @@ interface OccurrenceDao {
 
     @Update
     suspend fun update(occurrence: OccurrenceEntity)
+
+    @Query("DELETE FROM occurrence")
+    suspend fun deleteAll()
 }
 
 @Dao
@@ -194,8 +224,14 @@ interface MealSessionDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insert(session: MealSessionEntity)
 
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertAll(sessions: List<MealSessionEntity>)
+
     @Update
     suspend fun update(session: MealSessionEntity)
+
+    @Query("DELETE FROM meal_session")
+    suspend fun deleteAll()
 }
 
 @Dao
@@ -211,5 +247,8 @@ interface ChangeLogDao {
 
     @Query("SELECT * FROM change_log ORDER BY changedAt ASC")
     suspend fun getAllSync(): List<ChangeLogEntity>
+
+    @Query("DELETE FROM change_log")
+    suspend fun deleteAll()
 }
 
