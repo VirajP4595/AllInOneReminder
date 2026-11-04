@@ -1,3 +1,5 @@
+import java.util.Base64
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
@@ -15,7 +17,7 @@ android {
         minSdk = 30
         targetSdk = 35
         versionCode = 1
-        versionName = "0.1.0"
+        versionName = "0.1.1"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
@@ -23,13 +25,56 @@ android {
         }
     }
 
+    signingConfigs {
+        create("release") {
+            val keystoreBase64 = System.getenv("KEYSTORE_BASE64")
+            val keystorePassword = System.getenv("KEYSTORE_PASSWORD")
+            val keyAlias = System.getenv("KEY_ALIAS")
+            val keyPassword = System.getenv("KEY_PASSWORD")
+
+            if (!keystoreBase64.isNullOrBlank() && !keystorePassword.isNullOrBlank() && !keyAlias.isNullOrBlank() && !keyPassword.isNullOrBlank()) {
+                val keystoreFile = File(layout.buildDirectory.asFile.get(), "release.keystore")
+                keystoreFile.parentFile.mkdirs()
+                keystoreFile.writeBytes(Base64.getDecoder().decode(keystoreBase64))
+                storeFile = keystoreFile
+                storePassword = keystorePassword
+                this.keyAlias = keyAlias
+                this.keyPassword = keyPassword
+            }
+        }
+    }
+
+    val isReleaseSigned = !System.getenv("KEYSTORE_BASE64").isNullOrBlank() &&
+            !System.getenv("KEYSTORE_PASSWORD").isNullOrBlank() &&
+            !System.getenv("KEY_ALIAS").isNullOrBlank() &&
+            !System.getenv("KEY_PASSWORD").isNullOrBlank()
+
     buildTypes {
         release {
-            isMinifyEnabled = false
+            isMinifyEnabled = true
+            isShrinkResources = true
+            signingConfig = if (isReleaseSigned) {
+                signingConfigs.getByName("release")
+            } else {
+                signingConfigs.getByName("debug")
+            }
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
+        }
+    }
+
+    applicationVariants.all {
+        outputs.all {
+            val output = this as? com.android.build.gradle.internal.api.BaseVariantOutputImpl
+            if (output != null && buildType.name == "release") {
+                output.outputFileName = if (isReleaseSigned) {
+                    "app-${versionName}.apk"
+                } else {
+                    "app-${versionName}-debugsigned.apk"
+                }
+            }
         }
     }
 

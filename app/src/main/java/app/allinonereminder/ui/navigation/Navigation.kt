@@ -308,7 +308,12 @@ fun MainAppNavigation(
                             val msg = sampleDataSeeder.seedSampleData()
                             Toast.makeText(context, msg, Toast.LENGTH_LONG).show()
                         }
-                    }
+                    },
+                    onCreateBackup = viewModel::createBackup,
+                    onInspectRestore = viewModel::inspectRestore,
+                    onConfirmRestore = viewModel::confirmRestore,
+                    onDismissRestorePreview = viewModel::dismissRestorePreview,
+                    onClearMessages = viewModel::clearMessages
                 )
             }
 
