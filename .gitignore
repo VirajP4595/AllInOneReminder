@@ -1,0 +1,24 @@
+# Gradle / Android Studio
+.gradle/
+build/
+*/build/
+local.properties
+.idea/
+*.iml
+.cxx/
+.externalNativeBuild/
+captures/
+.DS_Store
+
+# Signing — never commit keystores or their passwords
+*.jks
+*.keystore
+keystore.properties
+
+# Backend secrets (Phase 2) — never commit
+supabase/.env
+supabase/.temp/
+*.service-account.json
+fcm-service-account*.json
+.env
+.env.*
