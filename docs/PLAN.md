@@ -12,6 +12,8 @@ Status: planning only, no code yet.
 | New scope | Exercise/habit reminders, gamification, "snooze until after I eat" |
 | Escalation grace | 60 min default, overridable per item (e.g., 15 min for insulin) |
 | Sign-in | Google account for every member |
+| Budget | **$0 hard requirement.** No card on any service. Sideloaded APK only (no Play Store $25 fee) |
+| Backend | Supabase free tier + FCM (free); end-to-end encrypted |
 | Edit rights | Any household member can edit any profile, with a change log and change alerts (see §2) |
 
 ## 1. Core risk: reliable alarms
@@ -21,26 +23,33 @@ Status: planning only, no code yet.
 - Reschedule on boot, time or timezone change, and app update. Only the next due alarm is registered with the OS; the schedule is recomputed after every fire or edit.
 - First-run setup: battery-optimisation exemption plus guidance for OEM autostart settings (Xiaomi, Oppo, Vivo, Realme, Samsung).
 
-## 2. Architecture: local-first plus sync
-Every device schedules its **own local alarms** from its local database. The cloud syncs data only. Reminders therefore still ring with no internet.
+## 2. Architecture: local-first, end-to-end encrypted, free backend
+Every device schedules its **own local alarms** from its own encrypted local database. The backend syncs encrypted data and runs the missed-dose check. Reminders ring with no internet.
 
 ```
-Phone A (Mom)                Firebase                     Phone B (Viraj)
-Room DB ──sync──▶ Firestore ◀──sync── Room DB
-local alarms                 Cloud Function (every 5 min):   local alarms (opt-in per profile)
-Taken/Skip log ─▶            "dose due + grace, no log?"  ─▶ FCM push "Mom missed 9:00 Metformin"
+Phone A (Mom)                     Supabase (free)                       Phone B (Viraj)
+SQLCipher Room DB ─encrypt─▶ Postgres (ciphertext + escalation   ◀─ SQLCipher Room DB
+local alarms                  metadata) + Storage (enc. photos)      local alarms (opt-in)
+Taken/Skip ─▶ "done" marker   pg_cron every 5 min:                    
+                              due + grace, no "done"? ──▶ FCM ──▶  push, decrypted on device
+SMS fallback (phone alive, no internet) ───────────────────────▶  SMS
 ```
-- **Auth:** Google Sign-In via Firebase Auth.
-- **Household:** one household with many profiles and many member accounts. Pairing works by QR code or a 6-digit invite code.
+- **Auth:** Google Sign-In via Supabase Auth. **Household** with profiles and members; pairing by QR code, which also transfers the household encryption key.
+- **Encryption:** local DB uses SQLCipher with the key in the Android Keystore. Synced rows and photos are encrypted with the household key before upload. The server sees only: random IDs, due time, grace minutes, done marker, FCM tokens. A **recovery key QR** is printed at setup; losing all phones and the recovery key means the data is lost.
 - **Per device, per profile notification mode:** `Full-screen alarm` / `Notification` / `Missed-only alerts` / `Off`.
-- **Escalation is checked on the server**, not on the patient's phone. A dead, off or offline phone can't report its own miss.
-- **Edit safeguards:** every change to an item or schedule is written to an append-only `ChangeLog` (who, when, old → new). Dosage, time and stop/delete changes push a notification to that profile's owner and caregivers ("Viraj changed Mom's Metformin 500 → 1000 mg"). Deletes are soft deletes and can be undone for 30 days.
-- **Conflicts:** last-write-wins per field. Every row has a UUID, `updatedAt` and a soft-delete flag. Dose logs are append-only, so they never conflict.
-- **Cost:** Firestore and FCM fit the free tier for a family. Scheduled Cloud Functions need the Blaze (pay-as-you-go) plan with a card on file. Expected cost is about $0 at family scale.
-- **Privacy:** health data sits in your own Firebase project. Security rules allow access only to household members. Photos go to Cloud Storage with the same rules.
+- **Escalation:** pg_cron (or a scheduled Edge Function) checks every 5 min. The push goes through FCM's HTTP v1 API using a service account (free; no Blaze plan needed for FCM alone). Default grace is 60 min, configurable per item.
+- **SMS fallback:** the patient's phone texts caregivers if a critical dose is missed and it has no internet. Opt-in, because carrier SMS charges may apply depending on the plan.
+- **Edit safeguards:** every change to an item or schedule is written to an append-only `ChangeLog` (who, when, old → new). Dosage, time and stop/delete changes push a notification to that profile's owner and caregivers. Deletes are soft deletes and can be undone for 30 days.
+- **Sync:** a custom outbox/pull sync over Supabase REST (no built-in offline sync). Last-write-wins per row using `updatedAt`; dose logs are append-only.
+- **Free-tier protection:**
+  - Each device sends a daily heartbeat, which also keeps the project active and avoids the inactivity pause.
+  - A caregiver app that can't reach the backend for 24 h shows "Missed-dose alerts are OFF".
+  - Weekly encrypted export to the phone or Google Drive, since there are no backups on the free tier.
+  - Photos are compressed to about 200 KB before upload (the 1 GB storage cap holds about 5,000).
+- **Free-tier limits to watch (verify at build time):** 2 projects, 500 MB DB, 1 GB storage, 5 GB egress, pause after about 7 days of inactivity.
 
 ## 3. Tech stack
-Kotlin, Jetpack Compose (Material 3), Room, Hilt, WorkManager (sync), Firebase (Auth, Firestore, Storage, FCM, Functions), CameraX + Photo Picker, Vico charts, Health Connect (optional step verification), GitHub Actions building a signed APK.
+Kotlin, Jetpack Compose (Material 3), Room, Hilt, WorkManager (sync), SQLCipher, Supabase (Auth, Postgres + RLS, Storage, pg_cron, Edge Functions) via supabase-kt, Firebase Cloud Messaging only (free), CameraX + Photo Picker, Vico charts, Health Connect (optional step verification), GitHub Actions building a signed APK (free minutes; keystore stored in repo secrets).
 
 ## 4. Data model
 - **Household**, **Member** (account), **DevicePrefs** (member × profile → notify mode), **ChangeLog** (append-only)
@@ -76,17 +85,17 @@ Today timeline (per profile + All) · Items and editor · Profiles and meal anch
 
 ## 8. Phases
 - **P1 – Offline MVP (one phone):** profiles, items with photo and dosage, fixed and meal-relative schedules, full-screen alarm, Taken/Snooze/Skip, **meal-deferred snooze**, exercise items, Today screen, reboot persistence, permission health check, local backup. The data model is sync-ready (UUIDs, updatedAt, soft delete).
-- **P2 – Family sync:** Firebase Auth, household and pairing, Firestore sync, per-device notification modes, server-side missed-dose escalation via FCM.
+- **P2 – Family sync:** Supabase Auth, household and QR pairing with key exchange, encrypted sync, per-device notification modes, pg_cron missed-dose escalation via FCM, heartbeat and offline warning, SMS fallback, recovery key.
 - **P3 – Engagement:** history, streaks, points, badges, daily rings, widget, stock and refill alerts, PRN and interval schedules, TTS, Health Connect walk verification.
 - **P4 – Health records:** vitals and charts, appointments with prep reminders, doctor PDF report, injection site rotation.
 
 ## 9. Testing
 - Unit tests for the recurrence engine (timezone, month-end, biweekly anchors, meal moves, meal-deferred snooze).
-- Firestore security-rule tests with the emulator.
+- Supabase RLS policy tests against a local Supabase (CLI) instance; encryption round-trip tests.
 - Manual device matrix: at least one Xiaomi/Oppo-class device on Android 11 and one Pixel/Samsung on Android 14+, covering locked screen, Doze (`adb shell dumpsys deviceidle force-idle`), reboot, app killed, airplane mode, and escalation while the patient's phone is off.
 
 ## 10. Non-goals and disclaimers
-Not medical advice; no dose calculation or interaction checks. No SMS/call escalation in v1 (it needs a paid gateway); push only.
+Not medical advice; no dose calculation or interaction checks. No paid services of any kind. No server-side SMS or call gateway; the only SMS is the opt-in fallback sent from the patient's own phone.
 
 ## 11. Remaining open questions
 None blocking P1.
