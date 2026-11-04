@@ -1,7 +1,6 @@
 package app.allinonereminder
 
 import android.os.Bundle
-import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.Arrangement
@@ -29,16 +28,31 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-import androidx.lifecycle.lifecycleScope
+import app.allinonereminder.alarm.AlarmCoordinator
 import app.allinonereminder.data.SampleDataSeeder
+import app.allinonereminder.data.repository.MealAnchorRepository
+import app.allinonereminder.data.repository.ProfileRepository
+import app.allinonereminder.data.repository.SettingsRepository
 import app.allinonereminder.data.security.DatabaseKeyManager
-import app.allinonereminder.ui.permissions.PermissionHealthCheckScreen
+import app.allinonereminder.ui.navigation.MainAppNavigation
+import app.allinonereminder.ui.theme.AllInOneReminderTheme
 import dagger.hilt.android.AndroidEntryPoint
-import kotlinx.coroutines.launch
 import javax.inject.Inject
 
 @AndroidEntryPoint
 class MainActivity : ComponentActivity() {
+
+    @Inject
+    lateinit var settingsRepository: SettingsRepository
+
+    @Inject
+    lateinit var profileRepository: ProfileRepository
+
+    @Inject
+    lateinit var mealAnchorRepository: MealAnchorRepository
+
+    @Inject
+    lateinit var alarmCoordinator: AlarmCoordinator
 
     @Inject
     lateinit var sampleDataSeeder: SampleDataSeeder
@@ -50,7 +64,7 @@ class MainActivity : ComponentActivity() {
         val isKeyAccessible = keyManager.canAccessPassphrase()
 
         setContent {
-            MaterialTheme {
+            AllInOneReminderTheme {
                 Surface(
                     modifier = Modifier.fillMaxSize(),
                     color = MaterialTheme.colorScheme.background
@@ -67,16 +81,12 @@ class MainActivity : ComponentActivity() {
                             }
                         )
                     } else {
-                        PermissionHealthCheckScreen(
-                            onSeedSampleData = {
-                                lifecycleScope.launch {
-                                    val msg = sampleDataSeeder.seedSampleData()
-                                    Toast.makeText(this@MainActivity, msg, Toast.LENGTH_LONG).show()
-                                }
-                            },
-                            onTestAlarmSent = { msg ->
-                                Toast.makeText(this@MainActivity, msg, Toast.LENGTH_LONG).show()
-                            }
+                        MainAppNavigation(
+                            settingsRepository = settingsRepository,
+                            profileRepository = profileRepository,
+                            mealAnchorRepository = mealAnchorRepository,
+                            alarmCoordinator = alarmCoordinator,
+                            sampleDataSeeder = sampleDataSeeder
                         )
                     }
                 }
@@ -92,33 +102,32 @@ fun DataLockedRecoveryScreen(
 ) {
     var showConfirmDialog by remember { mutableStateOf(false) }
 
-    Scaffold { paddingValues ->
+    Scaffold { padding ->
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(paddingValues)
+                .padding(padding)
                 .padding(24.dp),
             verticalArrangement = Arrangement.Center,
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             Text(
-                text = "Data can't be unlocked",
+                text = "Data Locked",
                 style = MaterialTheme.typography.headlineMedium,
-                color = MaterialTheme.colorScheme.error,
-                textAlign = TextAlign.Center
+                color = MaterialTheme.colorScheme.error
             )
             Spacer(modifier = Modifier.height(16.dp))
             Text(
-                text = "The database encryption key cannot be recovered by the device keystore (e.g. after a restore or system key reset). You can restore from an encrypted backup or reset the database.",
-                style = MaterialTheme.typography.bodyLarge,
-                textAlign = TextAlign.Center
+                text = "Data can't be unlocked. The database key could not be recovered.\n\nYou can restore your data from an existing offline backup file, or reset the app database to start fresh.",
+                textAlign = TextAlign.Center,
+                style = MaterialTheme.typography.bodyMedium
             )
             Spacer(modifier = Modifier.height(32.dp))
             Button(
                 onClick = onRestoreFromBackup,
                 modifier = Modifier.fillMaxWidth()
             ) {
-                Text("Restore from backup")
+                Text("Restore from Backup")
             }
             Spacer(modifier = Modifier.height(12.dp))
             OutlinedButton(
@@ -136,10 +145,8 @@ fun DataLockedRecoveryScreen(
     if (showConfirmDialog) {
         AlertDialog(
             onDismissRequest = { showConfirmDialog = false },
-            title = { Text("Reset App Database?") },
-            text = {
-                Text("This will permanently delete the locked database and encryption key. All local medicines, schedules, and history will be erased. Are you sure you want to proceed?")
-            },
+            title = { Text("Reset Database?") },
+            text = { Text("All local health reminders, history, and photos will be permanently deleted and a new encryption key will be generated.") },
             confirmButton = {
                 TextButton(
                     onClick = {
