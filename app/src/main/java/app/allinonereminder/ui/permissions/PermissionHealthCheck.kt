@@ -2,6 +2,7 @@ package app.allinonereminder.ui.permissions
 
 import android.app.AlarmManager
 import android.app.NotificationManager
+import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
@@ -9,6 +10,9 @@ import android.os.Build
 import android.os.PowerManager
 import android.provider.Settings
 import androidx.core.app.NotificationManagerCompat
+import app.allinonereminder.MainActivity
+import app.allinonereminder.alarm.AlarmCoordinator
+import app.allinonereminder.alarm.AlarmReceiver
 
 data class PermissionItem(
     val title: String,
@@ -92,6 +96,33 @@ object PermissionChecker {
         )
 
         return list
+    }
+
+    fun scheduleTestAlarm(context: Context, inMinutes: Int = 1): String {
+        val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
+        val triggerTime = System.currentTimeMillis() + inMinutes * 60_000L
+        val alarmIntent = Intent(context, AlarmReceiver::class.java).apply {
+            action = AlarmCoordinator.ACTION_ALARM_FIRE
+            putExtra(AlarmCoordinator.EXTRA_OCCURRENCE_IDS, arrayOf("test-alarm-id"))
+        }
+        val pendingIntent = PendingIntent.getBroadcast(
+            context,
+            9999,
+            alarmIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+        val showIntent = Intent(context, MainActivity::class.java)
+        val showPendingIntent = PendingIntent.getActivity(
+            context,
+            9998,
+            showIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+        alarmManager.setAlarmClock(
+            AlarmManager.AlarmClockInfo(triggerTime, showPendingIntent),
+            pendingIntent
+        )
+        return "Test alarm scheduled in $inMinutes minute. Lock your screen to test!"
     }
 
     fun getOemAutostartInstructions(): Pair<String, String> {
