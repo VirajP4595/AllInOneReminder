@@ -69,6 +69,7 @@ import app.allinonereminder.model.SkipReason
 import app.allinonereminder.schedule.SchedulingEngine
 import dagger.hilt.android.AndroidEntryPoint
 import dagger.hilt.android.lifecycle.HiltViewModel
+import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -97,6 +98,7 @@ data class AlarmUiState(
 
 @HiltViewModel
 class AlarmViewModel @Inject constructor(
+    @ApplicationContext private val context: Context,
     private val occurrenceRepository: OccurrenceRepository,
     private val itemRepository: ItemRepository,
     private val profileRepository: ProfileRepository,
@@ -159,6 +161,21 @@ class AlarmViewModel @Inject constructor(
     fun onAllTakenClicked() {
         viewModelScope.launch {
             val now = Instant.now()
+            // Double-dose guard check for all items in group
+            for (uiModel in _uiState.value.items) {
+                val lastTaken = occurrenceRepository.getLastTakenBeforeSync(uiModel.item.id, now.toEpochMilli())
+                val lastTakenInstant = lastTaken?.actedAt?.let { Instant.ofEpochMilli(it) }
+                val warning = SchedulingEngine.doseWarning(uiModel.item, lastTakenInstant, now)
+                if (warning != null && lastTakenInstant != null) {
+                    val timeFormatter = DateTimeFormatter.ofPattern("HH:mm").withZone(ZoneId.systemDefault())
+                    _uiState.value = _uiState.value.copy(
+                        warningOccurrenceId = uiModel.occurrence.id,
+                        warningTimeStr = timeFormatter.format(lastTakenInstant)
+                    )
+                    return@launch
+                }
+            }
+
             for (uiModel in _uiState.value.items) {
                 occurrenceRepository.updateOccurrence(
                     uiModel.occurrence.copy(
@@ -218,14 +235,17 @@ class AlarmViewModel @Inject constructor(
             val meal = sched?.meal
 
             if (afterEating && meal != null) {
-                // Open a meal session
+                // Open a meal session and post ongoing notification
                 val todayStr = LocalDate.now(ZoneId.systemDefault()).toString()
-                mealSessionRepository.startMealSession(
-                    profileId = occUi.profile?.id ?: occUi.occurrence.profileId,
+                val targetProfileId = occUi.profile?.id ?: occUi.occurrence.profileId
+                val session = mealSessionRepository.startMealSession(
+                    profileId = targetProfileId,
                     meal = meal,
                     date = todayStr,
                     startedAt = now.toEpochMilli()
                 )
+                AlarmNotificationHelper.postMealNotification(context, targetProfileId, meal, session.id)
+
                 // Set status to DEFERRED_MEAL with 90 min + offset fallback
                 val offset = sched.offsetMinutes ?: 0
                 val fallbackDue = now.toEpochMilli() + (90 + offset) * 60_000L
@@ -261,12 +281,14 @@ class AlarmViewModel @Inject constructor(
 
             if (meal != null) {
                 val todayStr = LocalDate.now(ZoneId.systemDefault()).toString()
-                mealSessionRepository.startMealSession(
-                    profileId = occUi.profile?.id ?: occUi.occurrence.profileId,
+                val targetProfileId = occUi.profile?.id ?: occUi.occurrence.profileId
+                val session = mealSessionRepository.startMealSession(
+                    profileId = targetProfileId,
                     meal = meal,
                     date = todayStr,
                     startedAt = now.toEpochMilli()
                 )
+                AlarmNotificationHelper.postMealNotification(context, targetProfileId, meal, session.id)
             }
             // Mark item taken
             onTakenClicked(occurrenceId, force = true)

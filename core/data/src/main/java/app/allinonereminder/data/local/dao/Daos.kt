@@ -176,6 +176,15 @@ interface MealSessionDao {
     @Query("SELECT * FROM meal_session WHERE profileId = :profileId AND meal = :meal AND endedAt IS NULL LIMIT 1")
     suspend fun getOpenSessionSync(profileId: String, meal: MealType): MealSessionEntity?
 
+    @Query("SELECT * FROM meal_session WHERE (:profileId IS NULL OR profileId = :profileId) AND endedAt IS NULL ORDER BY startedAt DESC LIMIT 1")
+    fun getActiveSession(profileId: String?): Flow<MealSessionEntity?>
+
+    @Query("SELECT * FROM meal_session WHERE (:profileId IS NULL OR profileId = :profileId) AND endedAt IS NULL ORDER BY startedAt DESC LIMIT 1")
+    suspend fun getActiveSessionSync(profileId: String?): MealSessionEntity?
+
+    @Query("SELECT * FROM meal_session WHERE endedAt IS NULL")
+    suspend fun getAllOpenSessionsSync(): List<MealSessionEntity>
+
     @Query("SELECT * FROM meal_session WHERE profileId = :profileId AND date = :date")
     suspend fun getSessionsForDateSync(profileId: String, date: String): List<MealSessionEntity>
 

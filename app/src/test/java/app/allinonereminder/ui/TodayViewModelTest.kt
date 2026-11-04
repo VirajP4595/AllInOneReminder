@@ -168,6 +168,7 @@ class TodayViewModelTest {
         occurrenceRepo.upsertOccurrences(listOf(nextOcc))
 
         val viewModel = TodayViewModel(
+            context = context,
             profileRepository = profileRepo,
             itemRepository = itemRepo,
             occurrenceRepository = occurrenceRepo,

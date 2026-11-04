@@ -175,6 +175,7 @@ fun MainAppNavigation(
                     onSnooze = { viewModel.onSnoozeClicked(it, 10) },
                     onSkip = viewModel::onSkipClicked,
                     onStartMeal = viewModel::onStartMealNow,
+                    onEndMeal = viewModel::onEndMealNow,
                     onOccurrenceClick = { occ ->
                         navController.navigate("item/detail/${occ.item.id}")
                     }

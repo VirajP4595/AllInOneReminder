@@ -37,6 +37,7 @@ fun TodayScreen(
     onSnooze: (OccurrenceUiModel) -> Unit = {},
     onSkip: (OccurrenceUiModel) -> Unit = {},
     onStartMeal: (MealType) -> Unit = {},
+    onEndMeal: (MealSession) -> Unit = {},
     onOccurrenceClick: (OccurrenceUiModel) -> Unit = {}
 ) {
     var showMealDialog by remember { mutableStateOf(false) }
@@ -80,6 +81,14 @@ fun TodayScreen(
                 nextAlarmEpochMillis = uiState.nextAlarmEpochMillis,
                 onStartMealClick = { showMealDialog = true }
             )
+
+            // Active meal session banner if in progress
+            if (uiState.activeMealSession != null) {
+                ActiveMealSessionCard(
+                    session = uiState.activeMealSession,
+                    onDoneEating = { onEndMeal(uiState.activeMealSession) }
+                )
+            }
 
             // Timeline of occurrences
             if (uiState.occurrences.isEmpty()) {
@@ -432,6 +441,71 @@ private fun StatusChip(status: OccurrenceStatus) {
             fontWeight = FontWeight.Bold,
             modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
         )
+    }
+}
+
+@Composable
+private fun ActiveMealSessionCard(
+    session: MealSession,
+    onDoneEating: () -> Unit
+) {
+    val mealName = session.meal.name.lowercase().replaceFirstChar { it.uppercase() }
+    val timeFormatter = DateTimeFormatter.ofPattern("h:mm a").withZone(ZoneId.systemDefault())
+    val startedStr = timeFormatter.format(Instant.ofEpochMilli(session.startedAt))
+
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 6.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.tertiaryContainer),
+        shape = RoundedCornerShape(12.dp)
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(14.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.weight(1f)
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Restaurant,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onTertiaryContainer,
+                    modifier = Modifier.size(28.dp)
+                )
+                Spacer(modifier = Modifier.width(12.dp))
+                Column {
+                    Text(
+                        text = "Having $mealName",
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onTertiaryContainer
+                    )
+                    Text(
+                        text = "Started at $startedStr",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onTertiaryContainer.copy(alpha = 0.8f)
+                    )
+                }
+            }
+
+            Button(
+                onClick = onDoneEating,
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = MaterialTheme.colorScheme.primary,
+                    contentColor = MaterialTheme.colorScheme.onPrimary
+                ),
+                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
+            ) {
+                Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(16.dp))
+                Spacer(modifier = Modifier.width(4.dp))
+                Text("Done")
+            }
+        }
     }
 }
 

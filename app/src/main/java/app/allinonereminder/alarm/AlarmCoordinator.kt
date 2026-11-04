@@ -133,14 +133,19 @@ class AlarmCoordinator @Inject constructor(
             occurrenceRepository.upsertOccurrences(occurrencesToUpsert)
         }
 
-        // 2. Mark PENDING / SNOOZED / RINGING rows past plannedAt + graceMinutes as MISSED
+        // 2. Mark PENDING / SNOOZED / RINGING / DEFERRED_MEAL rows past grace period as MISSED
         val unresolved = occurrenceRepository.getUnresolvedSync()
         val itemMap = items.associateBy { it.id }
 
         for (occ in unresolved) {
             val item = itemMap[occ.itemId]
             val graceMillis = (item?.graceMinutes ?: 60) * 60_000L
-            if (now.toEpochMilli() > (occ.plannedAt + graceMillis)) {
+            val effectiveBaseline = if (occ.status == OccurrenceStatus.DEFERRED_MEAL) {
+                maxOf(occ.plannedAt, occ.dueAt)
+            } else {
+                occ.plannedAt
+            }
+            if (now.toEpochMilli() > (effectiveBaseline + graceMillis)) {
                 occurrenceRepository.updateOccurrence(
                     occ.copy(
                         status = OccurrenceStatus.MISSED,
