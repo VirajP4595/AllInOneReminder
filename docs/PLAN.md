@@ -10,6 +10,9 @@ Status: planning only, no code yet.
 | Language | English only |
 | Missed-dose escalation | Yes, to paired caregivers |
 | New scope | Exercise/habit reminders, gamification, "snooze until after I eat" |
+| Escalation grace | 60 min default, overridable per item (e.g., 15 min for insulin) |
+| Sign-in | Google account for every member |
+| Edit rights | Any household member can edit any profile, with a change log and change alerts (see §2) |
 
 ## 1. Core risk: reliable alarms
 - Use `AlarmManager.setAlarmClock()`, which Doze does not delay. Use WorkManager and FCM only for sync, **never for the alarm itself**.
@@ -31,6 +34,7 @@ Taken/Skip log ─▶            "dose due + grace, no log?"  ─▶ FCM push "M
 - **Household:** one household with many profiles and many member accounts. Pairing works by QR code or a 6-digit invite code.
 - **Per device, per profile notification mode:** `Full-screen alarm` / `Notification` / `Missed-only alerts` / `Off`.
 - **Escalation is checked on the server**, not on the patient's phone. A dead, off or offline phone can't report its own miss.
+- **Edit safeguards:** every change to an item or schedule is written to an append-only `ChangeLog` (who, when, old → new). Dosage, time and stop/delete changes push a notification to that profile's owner and caregivers ("Viraj changed Mom's Metformin 500 → 1000 mg"). Deletes are soft deletes and can be undone for 30 days.
 - **Conflicts:** last-write-wins per field. Every row has a UUID, `updatedAt` and a soft-delete flag. Dose logs are append-only, so they never conflict.
 - **Cost:** Firestore and FCM fit the free tier for a family. Scheduled Cloud Functions need the Blaze (pay-as-you-go) plan with a card on file. Expected cost is about $0 at family scale.
 - **Privacy:** health data sits in your own Firebase project. Security rules allow access only to household members. Photos go to Cloud Storage with the same rules.
@@ -39,10 +43,10 @@ Taken/Skip log ─▶            "dose due + grace, no log?"  ─▶ FCM push "M
 Kotlin, Jetpack Compose (Material 3), Room, Hilt, WorkManager (sync), Firebase (Auth, Firestore, Storage, FCM, Functions), CameraX + Photo Picker, Vico charts, Health Connect (optional step verification), GitHub Actions building a signed APK.
 
 ## 4. Data model
-- **Household**, **Member** (account), **DevicePrefs** (member × profile → notify mode)
+- **Household**, **Member** (account), **DevicePrefs** (member × profile → notify mode), **ChangeLog** (append-only)
 - **Profile**: name, photo, colour, age, allergies, blood group, doctor contacts
 - **MealAnchors** per profile: wake, breakfast, lunch, snack, dinner, bed (weekday and weekend sets)
-- **Item**: type (Medicine, Injection, Water/Drink, Food, Supplement, **Exercise**, Appointment, Lab test, Habit, Custom), name, photos[], dosage, instructions, stock, refill threshold, start/end, criticality (Critical / Normal / Gentle)
+- **Item**: type (Medicine, Injection, Water/Drink, Food, Supplement, **Exercise**, Appointment, Lab test, Habit, Custom), name, photos[], dosage, instructions, stock, refill threshold, start/end, criticality (Critical / Normal / Gentle), escalation grace minutes (default 60)
   - Exercise extras: target duration or steps (e.g., 15 min walk), optional Health Connect verification
 - **Schedule**: fixed time; meal-relative (before/after ± N min); interval; daily, weekdays, every N days, weekly, biweekly, monthly, one-time; PRN (as-needed, with minimum gap and daily max); taper
 - **Occurrence log**: scheduled_at, status (Taken, Skipped, Snoozed, Missed, Deferred-to-meal), acted_at, acted_by, note
@@ -85,6 +89,4 @@ Today timeline (per profile + All) · Items and editor · Profiles and meal anch
 Not medical advice; no dose calculation or interaction checks. No SMS/call escalation in v1 (it needs a paid gateway); push only.
 
 ## 11. Remaining open questions
-1. Escalation grace period: how long after a critical dose is due before a caregiver is alerted? (Proposed: 30 min, configurable per item.)
-2. Is a Google account acceptable for every family member, including elderly parents?
-3. Who may edit a profile's medicines: everyone in the household, or only "admins"?
+None blocking P1.
