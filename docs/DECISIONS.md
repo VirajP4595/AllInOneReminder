@@ -10,3 +10,5 @@ Format: `YYYY-MM-DD — Decision — Reason — Alternatives considered`
 - 2026-11-04 — Any household member can edit, with change log + change alerts + 30-day undo — Owner choice; safeguards against silent dose changes — Admin-only editing
 - 2026-11-04 — Gamification rewards on-time habits; meds earn points only inside their window — Avoid rewarding late or double doses — Uniform gamification
 - 2026-11-04 — Encrypted DB means alarms resume only after first unlock after reboot — Do not store medicine data in device-protected storage — Direct-boot-aware storage
+- 2026-11-04 — Foreground service type `mediaPlayback` for `AlarmRingService` — On Android 14+ (API 34+), foreground services must declare a specific type; mediaPlayback matches continuous alarm audio and vibration playback, with specialUse declared in manifest as companion — specialUse only, systemExempted
+- 2026-11-04 — Single `setAlarmClock` registration with `AlarmCoordinator` idempotency — setAlarmClock bypasses Doze mode and gives highest priority to ring on locked screens without battery saver delays — Periodic background workers, setExactAndAllowWhileIdle
