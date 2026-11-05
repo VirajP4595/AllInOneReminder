@@ -32,4 +32,4 @@ const fcm = createFcmClient({
   getAccessToken: cachedAccessToken(account),
 });
 
-Deno.serve(createEscalateHandler(repo, fcm));
+Deno.serve(createEscalateHandler(repo, fcm, required("CRON_SECRET")));

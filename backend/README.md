@@ -42,8 +42,8 @@ npx --yes supabase@latest test db
 ```
 
 `db reset` applies `supabase/migrations/*.sql` from scratch. `test db` runs the
-pgTAP suites in `supabase/tests/`. There are currently **50** assertions (40 RLS
-+ 10 job/cron) and the run must end with `All tests successful`.
+pgTAP suites in `supabase/tests/`. There are currently **75** assertions (63 RLS
++ 12 job/cron) and the run must end with `All tests successful`.
 
 The Edge Functions have their own Deno tests (mocked FCM endpoint, no network):
 
@@ -79,17 +79,25 @@ The FCM service-account JSON is read **only** from the `FCM_SERVICE_ACCOUNT`
 Supabase secret. Payloads contain opaque refs only — no names, medicines or
 doses.
 
-The `pg_cron` jobs call `/functions/v1/<name>` every five minutes. The URL and
-the public anon key are database settings (never repo secrets):
+The `pg_cron` jobs call `/functions/v1/<name>` every five minutes. Both functions are deployed with
+`verify_jwt = false` (see `supabase/config.toml`) and reject any request that does not carry the
+`x-cron-secret` header matching the `CRON_SECRET` Edge Function secret, because the anon key is
+public and must not be enough to trigger them. The project URL and the same secret are stored in
+Supabase Vault, run once per project in the SQL editor:
 
 ```sql
-alter database postgres set app.supabase_url = 'https://<project-ref>.supabase.co';
-alter database postgres set app.anon_key = '<anon public key>';
+select vault.create_secret('https://<project-ref>.supabase.co', 'supabase_url');
+select vault.create_secret('<the same long random string as CRON_SECRET>', 'cron_secret');
 ```
 
-Run these once per project, then reconnect so new sessions see the settings.
-The anon key is public by design; the service-role key stays inside the Edge
-Function environment and is never stored in SQL.
+Until both exist, the cron helper raises `cron_not_configured` and nothing is sent. The
+service-role key stays inside the Edge Function environment and is never stored in SQL.
+
+List queries are read page by page (`_shared/paging.ts`) because PostgREST caps each response at
+1000 rows; `in.(...)` filters are chunked to keep URLs short.
+
+`escalation_slots.critical` is not read here: it is reserved for the opt-in SMS fallback (P2-B4),
+which runs on the patient's phone.
 
 ## CI
 
@@ -113,8 +121,9 @@ Follow `docs/SETUP.md` §3. The backend-specific parts:
 4. Deploy the Edge Functions:
    `npx --yes supabase@latest functions deploy escalate` and
    `npx --yes supabase@latest functions deploy heartbeat-watch`.
-5. Point the cron jobs at the project by setting the two database settings
-   shown in **Edge Functions** above (`app.supabase_url`, `app.anon_key`).
+5. Generate a long random string (for example `openssl rand -hex 32`), store it in Vault as
+   shown in **Edge Functions** above, and also set it as the `CRON_SECRET` Edge Function secret:
+   `npx --yes supabase@latest secrets set CRON_SECRET=<the string>`.
 6. Set the FCM service-account JSON **only** as a Supabase secret:
 
    ```bash
@@ -162,6 +171,6 @@ Follow `docs/SETUP.md` §3. The backend-specific parts:
   stays pending and is retried on the next run. Once recorded, it is suppressed
   for 24 h.
 - **Cron scheduling is data, not code.** The jobs call
-  `public.invoke_edge_function`, which reads `app.supabase_url` and
-  `app.anon_key` at execution time. The anon key is public; the service-role key
-  is never present in SQL.
+  `public.invoke_edge_function`, which reads the project URL and the shared
+  `cron_secret` from Supabase Vault at execution time. The service-role key is
+  never present in SQL.

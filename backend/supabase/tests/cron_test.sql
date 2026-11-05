@@ -1,6 +1,6 @@
 begin;
 
-select plan(10);
+select plan(12);
 
 select is(
     (select count(*)::int from pg_extension where extname = 'pg_cron'),
@@ -67,6 +67,19 @@ select is(
        and tablename in ('escalation_sends', 'device_silence_alerts')),
     0,
     'server-only job tables expose no client policies'
+);
+
+select ok(
+    not has_function_privilege('anon', 'public.invoke_edge_function(text)', 'execute')
+    and not has_function_privilege('authenticated', 'public.invoke_edge_function(text)', 'execute'),
+    'clients cannot call invoke_edge_function through the API'
+);
+
+select throws_ok(
+    $$ select public.invoke_edge_function('escalate') $$,
+    'P0001',
+    'cron_not_configured',
+    'the cron helper refuses to run until Vault holds the URL and secret'
 );
 
 select * from finish();

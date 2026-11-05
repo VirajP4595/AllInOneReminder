@@ -30,28 +30,43 @@ create table public.device_silence_alerts (
 alter table public.escalation_sends enable row level security;
 alter table public.device_silence_alerts enable row level security;
 
--- Called by pg_cron. The URL and the anon key are database settings, not repo
--- secrets: `alter database postgres set app.supabase_url = '...'` and
--- `alter database postgres set app.anon_key = '...'` (see backend/README.md).
--- The anon key is public by design; the service role key never leaves the
--- Edge Function environment.
+-- Called by pg_cron. The project URL and a random shared secret live in Supabase Vault (not in
+-- the repo, not in database settings):
+--   select vault.create_secret('https://<ref>.supabase.co', 'supabase_url');
+--   select vault.create_secret('<long random string>', 'cron_secret');
+-- The same random string is set as the CRON_SECRET Edge Function secret. The functions are
+-- deployed with verify_jwt = false and reject any request without a matching x-cron-secret, so
+-- the public anon key shipped in the APK cannot trigger them (review E1).
 create or replace function public.invoke_edge_function(p_function text)
 returns bigint
-language sql
+language plpgsql
 security definer
-set search_path = public, net
+set search_path = public, net, vault
 as $$
-    select net.http_post(
-        url := current_setting('app.supabase_url') || '/functions/v1/' || p_function,
+declare
+    v_url text;
+    v_secret text;
+begin
+    select decrypted_secret into v_url
+    from vault.decrypted_secrets where name = 'supabase_url';
+    select decrypted_secret into v_secret
+    from vault.decrypted_secrets where name = 'cron_secret';
+    if v_url is null or v_secret is null then
+        raise exception 'cron_not_configured';
+    end if;
+    return net.http_post(
+        url := v_url || '/functions/v1/' || p_function,
         headers := jsonb_build_object(
             'Content-Type', 'application/json',
-            'Authorization', 'Bearer ' || current_setting('app.anon_key')
+            'x-cron-secret', v_secret
         ),
         body := '{}'::jsonb
     );
+end;
 $$;
 
-revoke all on function public.invoke_edge_function(text) from public;
+-- Server-only: pg_cron runs as postgres. Clients must not be able to call it through the API.
+revoke all on function public.invoke_edge_function(text) from public, anon, authenticated;
 
 select cron.schedule(
     'escalate-every-5-minutes',

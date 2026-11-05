@@ -3,6 +3,7 @@
 
 import type { FcmClient } from "./fcm.ts";
 import { runEscalation, type EscalationRepo } from "./escalation.ts";
+import { isAuthorized, unauthorized } from "./auth.ts";
 import { runHeartbeat, type HeartbeatRepo } from "./heartbeat.ts";
 
 function failure(error: unknown): Response {
@@ -16,9 +17,11 @@ function failure(error: unknown): Response {
 export function createEscalateHandler(
   repo: EscalationRepo,
   fcm: FcmClient,
+  cronSecret: string,
   clock: () => Date = () => new Date(),
-): () => Promise<Response> {
-  return async (): Promise<Response> => {
+): (request: Request) => Promise<Response> {
+  return async (request: Request): Promise<Response> => {
+    if (!isAuthorized(request, cronSecret)) return unauthorized();
     try {
       const summary = await runEscalation(repo, fcm, clock());
       return Response.json({ ok: true, ...summary });
@@ -31,9 +34,11 @@ export function createEscalateHandler(
 export function createHeartbeatHandler(
   repo: HeartbeatRepo,
   fcm: FcmClient,
+  cronSecret: string,
   clock: () => Date = () => new Date(),
-): () => Promise<Response> {
-  return async (): Promise<Response> => {
+): (request: Request) => Promise<Response> {
+  return async (request: Request): Promise<Response> => {
+    if (!isAuthorized(request, cronSecret)) return unauthorized();
     try {
       const summary = await runHeartbeat(repo, fcm, clock());
       return Response.json({ ok: true, ...summary });

@@ -32,4 +32,4 @@ const fcm = createFcmClient({
   getAccessToken: cachedAccessToken(account),
 });
 
-Deno.serve(createHeartbeatHandler(repo, fcm));
+Deno.serve(createHeartbeatHandler(repo, fcm, required("CRON_SECRET")));
