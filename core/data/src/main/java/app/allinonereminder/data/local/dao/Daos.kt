@@ -161,6 +161,27 @@ interface OccurrenceDao {
     @Query("SELECT * FROM occurrence WHERE id = :id")
     suspend fun getByIdSync(id: String): OccurrenceEntity?
 
+    @Query("SELECT * FROM occurrence WHERE id IN (:ids)")
+    suspend fun getByIdsSync(ids: List<String>): List<OccurrenceEntity>
+
+    @Query("UPDATE occurrence SET status = 'TAKEN', actedAt = :actedAt, updatedAt = :updatedAt, note = :note WHERE id = :id AND status IN ('PENDING', 'RINGING', 'SNOOZED', 'DEFERRED_MEAL')")
+    suspend fun markTakenTargeted(id: String, actedAt: Long, updatedAt: Long, note: String? = null): Int
+
+    @Query("UPDATE occurrence SET status = 'SKIPPED', actedAt = :actedAt, updatedAt = :updatedAt, skipReason = :skipReason, note = :note WHERE id = :id AND status IN ('PENDING', 'RINGING', 'SNOOZED', 'DEFERRED_MEAL')")
+    suspend fun markSkippedTargeted(id: String, actedAt: Long, updatedAt: Long, skipReason: String?, note: String? = null): Int
+
+    @Query("UPDATE occurrence SET status = 'SNOOZED', dueAt = :newDueAt, updatedAt = :updatedAt WHERE id = :id AND status IN ('PENDING', 'RINGING', 'SNOOZED', 'DEFERRED_MEAL')")
+    suspend fun snoozeTargeted(id: String, newDueAt: Long, updatedAt: Long): Int
+
+    @Query("UPDATE occurrence SET status = 'DEFERRED_MEAL', dueAt = :newDueAt, updatedAt = :updatedAt WHERE id = :id AND status IN ('PENDING', 'RINGING', 'SNOOZED', 'DEFERRED_MEAL')")
+    suspend fun deferMealTargeted(id: String, newDueAt: Long, updatedAt: Long): Int
+
+    @Query("UPDATE occurrence SET status = 'MISSED', updatedAt = :updatedAt WHERE id = :id AND status IN ('PENDING', 'RINGING', 'SNOOZED', 'DEFERRED_MEAL')")
+    suspend fun markMissedTargeted(id: String, updatedAt: Long): Int
+
+    @Query("UPDATE occurrence SET status = 'SUPERSEDED', updatedAt = :updatedAt WHERE id IN (:ids) AND status IN ('PENDING', 'RINGING', 'SNOOZED', 'DEFERRED_MEAL')")
+    suspend fun markSupersededTargeted(ids: List<String>, updatedAt: Long): Int
+
     @Query("SELECT * FROM occurrence WHERE status IN ('PENDING', 'RINGING', 'SNOOZED', 'DEFERRED_MEAL') ORDER BY dueAt ASC")
     suspend fun getUnresolvedSync(): List<OccurrenceEntity>
 
