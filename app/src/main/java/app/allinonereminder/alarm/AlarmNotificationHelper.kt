@@ -10,8 +10,10 @@ import android.media.AudioAttributes
 import android.media.RingtoneManager
 import android.os.Build
 import androidx.core.app.NotificationCompat
+import app.allinonereminder.MainActivity
 import app.allinonereminder.R
 import app.allinonereminder.model.Criticality
+import app.allinonereminder.model.MealType
 
 object AlarmNotificationHelper {
     const val CHANNEL_CRITICAL = "alarms_critical"
@@ -120,12 +122,13 @@ object AlarmNotificationHelper {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
-        // Notification Action: Taken
-        val takenIntent = Intent(context, NotificationActionReceiver::class.java).apply {
-            action = NotificationActionReceiver.ACTION_NOTIFICATION_TAKEN
+        // Notification Action: Taken (PendingIntent.getActivity to AlarmActivity per Android 12+ trampoline rules)
+        val takenIntent = Intent(context, AlarmActivity::class.java).apply {
+            action = AlarmActivity.ACTION_TAKE_NOTIFICATION
             putExtra(AlarmCoordinator.EXTRA_OCCURRENCE_IDS, occurrenceIds)
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
         }
-        val takenPendingIntent = PendingIntent.getBroadcast(
+        val takenPendingIntent = PendingIntent.getActivity(
             context,
             3002,
             takenIntent,
@@ -172,6 +175,63 @@ object AlarmNotificationHelper {
         }
 
         return builder.build()
+    }
+
+    fun buildMealNotification(
+        context: Context,
+        profileId: String,
+        mealType: MealType,
+        sessionId: String
+    ): Notification {
+        val doneIntent = Intent(context, NotificationActionReceiver::class.java).apply {
+            action = NotificationActionReceiver.ACTION_NOTIFICATION_MEAL_DONE
+            putExtra(NotificationActionReceiver.EXTRA_PROFILE_ID, profileId)
+            putExtra(NotificationActionReceiver.EXTRA_MEAL_TYPE, mealType.name)
+            putExtra(NotificationActionReceiver.EXTRA_SESSION_ID, sessionId)
+        }
+        val donePendingIntent = PendingIntent.getBroadcast(
+            context,
+            3004,
+            doneIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+
+        val appIntent = Intent(context, MainActivity::class.java)
+        val appPendingIntent = PendingIntent.getActivity(
+            context,
+            3005,
+            appIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+
+        val mealName = mealType.name.lowercase().replaceFirstChar { it.uppercase() }
+
+        return NotificationCompat.Builder(context, CHANNEL_MEAL)
+            .setSmallIcon(android.R.drawable.ic_menu_today)
+            .setContentTitle("Eating $mealName")
+            .setContentText("Tap 'Done Eating' when finished to trigger post-meal reminders")
+            .setContentIntent(appPendingIntent)
+            .setOngoing(true)
+            .setAutoCancel(false)
+            .setPriority(NotificationCompat.PRIORITY_LOW)
+            .addAction(android.R.drawable.checkbox_on_background, "Done Eating", donePendingIntent)
+            .build()
+    }
+
+    fun postMealNotification(
+        context: Context,
+        profileId: String,
+        mealType: MealType,
+        sessionId: String
+    ) {
+        val nm = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        createNotificationChannels(context)
+        nm.notify(NOTIFICATION_ID_MEAL, buildMealNotification(context, profileId, mealType, sessionId))
+    }
+
+    fun cancelMealNotification(context: Context) {
+        val nm = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        nm.cancel(NOTIFICATION_ID_MEAL)
     }
 }
 
