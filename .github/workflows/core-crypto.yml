@@ -28,7 +28,7 @@ jobs:
           java-version: "21"
       - uses: gradle/actions/setup-gradle@v4
       - name: Test and enforce 90% line coverage
-        run: ./gradlew --no-daemon test jacocoTestReport jacocoTestCoverageVerification
+        run: ./gradlew --no-daemon test jacocoTestReport jacocoTestCoverageVerification coverageSummary
       - name: Upload coverage report
         if: always()
         uses: actions/upload-artifact@v4

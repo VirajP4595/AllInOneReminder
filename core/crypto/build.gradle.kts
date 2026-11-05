@@ -51,3 +51,16 @@ tasks.jacocoTestCoverageVerification {
 tasks.check {
     dependsOn(tasks.jacocoTestCoverageVerification)
 }
+
+tasks.register("coverageSummary") {
+    dependsOn(tasks.named("jacocoTestReport"))
+    doLast {
+        val report = layout.buildDirectory.file("reports/jacoco/test/jacocoTestReport.xml").get().asFile
+        val line = Regex("""<counter type="LINE" missed="(\d+)" covered="(\d+)"/>""")
+            .findAll(report.readText())
+            .last()
+        val missed = line.groupValues[1].toLong()
+        val covered = line.groupValues[2].toLong()
+        println("LINE_COVERAGE=%.2f%%".format(100.0 * covered / (covered + missed)))
+    }
+}
