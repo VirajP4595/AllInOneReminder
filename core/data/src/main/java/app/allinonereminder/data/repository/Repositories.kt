@@ -383,6 +383,15 @@ class MealSessionRepository(
     suspend fun getOpenSessionSync(profileId: String, meal: MealType): MealSession? =
         mealSessionDao.getOpenSessionSync(profileId, meal)?.toDomain()
 
+    fun getActiveSession(profileId: String? = null): Flow<MealSession?> =
+        mealSessionDao.getActiveSession(profileId).map { it?.toDomain() }
+
+    suspend fun getActiveSessionSync(profileId: String? = null): MealSession? =
+        mealSessionDao.getActiveSessionSync(profileId)?.toDomain()
+
+    suspend fun getAllOpenSessionsSync(): List<MealSession> =
+        mealSessionDao.getAllOpenSessionsSync().map { it.toDomain() }
+
     suspend fun getSessionsForDateSync(profileId: String, date: String): List<MealSession> =
         mealSessionDao.getSessionsForDateSync(profileId, date).map { it.toDomain() }
 

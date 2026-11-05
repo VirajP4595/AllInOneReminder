@@ -6,6 +6,7 @@ import android.os.Build
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import app.allinonereminder.alarm.AlarmCoordinator
+import app.allinonereminder.alarm.AlarmNotificationHelper
 import app.allinonereminder.alarm.AlarmRingService
 import app.allinonereminder.data.local.ChangeLogWriter
 import app.allinonereminder.data.repository.*
@@ -45,6 +46,7 @@ data class TodayUiState(
     val doubleDoseWarningOccurrence: OccurrenceUiModel? = null,
     val exactAlarmsDenied: Boolean = false,
     val rescheduleError: String? = null,
+    val activeMealSession: MealSession? = null,
     val isLoading: Boolean = true
 )
 
@@ -88,23 +90,29 @@ class TodayViewModel @Inject constructor(
         occurrenceRepository.getOccurrencesBetween(start, end)
     }
 
+    private val activeMealSessionFlow = _selectedProfileId.flatMapLatest { profileId ->
+        mealSessionRepository.getActiveSession(profileId)
+    }
+
     val uiState: StateFlow<TodayUiState> = combine(
-        combine(
-            profileRepository.getActiveProfiles(),
-            _selectedProfileId,
-            occurrencesFlow,
-            itemRepository.getActiveItems(),
-            _doubleDoseWarning
-        ) { profiles, selectedProfileId, todayOccurrences, allItems, warningOcc ->
-            TodayDataBundle(profiles, selectedProfileId, todayOccurrences, allItems, warningOcc)
-        },
+        profileRepository.getActiveProfiles(),
+        _selectedProfileId,
+        occurrencesFlow,
+        itemRepository.getActiveItems(),
+        _doubleDoseWarning,
+        activeMealSessionFlow,
         settingsRepository.lastRescheduleErrorFlow
-    ) { bundle, rescheduleError ->
-        val profiles = bundle.profiles
-        val selectedProfileId = bundle.selectedProfileId
-        val todayOccurrences = bundle.todayOccurrences
-        val allItems = bundle.allItems
-        val warningOcc = bundle.warningOcc
+    ) { args ->
+        @Suppress("UNCHECKED_CAST")
+        val profiles = args[0] as List<Profile>
+        val selectedProfileId = args[1] as String?
+        @Suppress("UNCHECKED_CAST")
+        val todayOccurrences = args[2] as List<Occurrence>
+        @Suppress("UNCHECKED_CAST")
+        val allItems = args[3] as List<Item>
+        val warningOcc = args[4] as OccurrenceUiModel?
+        val activeSession = args[5] as MealSession?
+        val rescheduleError = args[6] as String?
         val itemMap = allItems.associateBy { it.id }
         val profileMap = profiles.associateBy { it.id }
 
@@ -139,6 +147,7 @@ class TodayViewModel @Inject constructor(
             doubleDoseWarningOccurrence = warningOcc,
             exactAlarmsDenied = checkExactAlarmsDenied(),
             rescheduleError = rescheduleError,
+            activeMealSession = activeSession,
             isLoading = false
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), TodayUiState())
@@ -236,19 +245,81 @@ class TodayViewModel @Inject constructor(
         }
     }
 
-    fun onStartMealNow(meal: MealType) {
+    fun onStartMealNow(meal: MealType, targetProfileId: String? = null) {
         viewModelScope.launch {
             val now = System.currentTimeMillis()
             val todayStr = LocalDate.now(ZoneId.systemDefault()).toString()
-            val profileId = _selectedProfileId.value ?: uiState.value.profiles.firstOrNull()?.id ?: return@launch
+            val profiles = uiState.value.profiles
 
-            mealSessionRepository.startMealSession(
+            // Require explicit profile choice when "All" is selected and multiple profiles exist
+            val profileId = targetProfileId
+                ?: _selectedProfileId.value
+                ?: if (profiles.size == 1) profiles.first().id else null
+
+            if (profileId == null) {
+                // Cannot start meal when multiple profiles exist and none explicitly targeted
+                return@launch
+            }
+
+            val session = mealSessionRepository.startMealSession(
                 profileId = profileId,
                 meal = meal,
                 date = todayStr,
                 startedAt = now
             )
+            AlarmNotificationHelper.postMealNotification(context, profileId, meal, session.id)
+
+            // Re-time AFTER-meal items for this profile on this day (§15)
+            val unresolved = occurrenceRepository.getUnresolvedSync().filter { it.profileId == profileId }
+            val schedules = scheduleRepository.getAllActiveSchedulesSync().associateBy { it.id }
+            for (occ in unresolved) {
+                val sched = schedules[occ.scheduleId]
+                if (sched != null && sched.anchorType == ScheduleAnchorType.MEAL && sched.meal == meal && sched.relation == MealRelation.AFTER) {
+                    val offsetMillis = (sched.offsetMinutes ?: 0) * 60_000L
+                    val newDue = now + offsetMillis
+                    occurrenceRepository.updateOccurrence(
+                        occ.copy(
+                            status = OccurrenceStatus.PENDING,
+                            plannedAt = newDue,
+                            dueAt = newDue,
+                            updatedAt = now
+                        )
+                    )
+                }
+            }
+
             alarmCoordinator.reschedule("meal_started_now")
+        }
+    }
+
+    fun onEndMealNow(session: MealSession) {
+        viewModelScope.launch {
+            val now = System.currentTimeMillis()
+            mealSessionRepository.endMealSession(session.id, now)
+            AlarmNotificationHelper.cancelMealNotification(context)
+
+            // Recalculate any occurrences scheduled AFTER this meal or currently in DEFERRED_MEAL
+            val unresolved = occurrenceRepository.getUnresolvedSync().filter { it.profileId == session.profileId }
+            val schedules = scheduleRepository.getAllActiveSchedulesSync().associateBy { it.id }
+
+            for (occ in unresolved) {
+                val sched = schedules[occ.scheduleId]
+                if (sched != null && sched.anchorType == ScheduleAnchorType.MEAL && sched.meal == session.meal) {
+                    if (sched.relation == MealRelation.AFTER || occ.status == OccurrenceStatus.DEFERRED_MEAL) {
+                        val offsetMillis = (sched.offsetMinutes ?: 0) * 60_000L
+                        val newDue = now + offsetMillis
+                        occurrenceRepository.updateOccurrence(
+                            occ.copy(
+                                status = OccurrenceStatus.PENDING,
+                                dueAt = newDue,
+                                updatedAt = now
+                            )
+                        )
+                    }
+                }
+            }
+
+            alarmCoordinator.reschedule("meal_ended_now")
         }
     }
 }

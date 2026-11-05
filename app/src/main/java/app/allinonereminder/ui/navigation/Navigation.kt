@@ -187,6 +187,7 @@ fun MainAppNavigation(
                         }
                     },
                     onStartMeal = viewModel::onStartMealNow,
+                    onEndMeal = viewModel::onEndMealNow,
                     onOccurrenceClick = { occ ->
                         navController.navigate("item/detail/${occ.item.id}")
                     },
