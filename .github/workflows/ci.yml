@@ -29,7 +29,7 @@ jobs:
         run: chmod +x gradlew
 
       - name: Run Lint, Test and Assemble Debug
-        run: ./gradlew lint test assembleDebug --stacktrace
+        run: ./gradlew lint test :core:schedule:jacocoTestCoverageVerification assembleDebug --stacktrace
 
       - name: Upload Debug APK
         if: always()
