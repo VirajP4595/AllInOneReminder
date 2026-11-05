@@ -80,7 +80,20 @@ object PermissionChecker {
             )
         }
 
-        // 4. Battery Optimization Ignored
+        // 4. Display over other apps: lets the alarm open on top of whatever app is in use
+        list.add(
+            PermissionItem(
+                title = "Display Over Other Apps",
+                description = "Required for the alarm to cover the screen while you use another app. " +
+                    "Without it, alarms only appear as a small banner at the top",
+                isGranted = Settings.canDrawOverlays(context),
+                fixIntent = Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION).apply {
+                    data = Uri.fromParts("package", context.packageName, null)
+                }
+            )
+        )
+
+        // 5. Battery Optimization Ignored
         val pm = context.getSystemService(Context.POWER_SERVICE) as PowerManager
         val batteryIgnored = pm.isIgnoringBatteryOptimizations(context.packageName)
         val batteryIntent = Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS).apply {

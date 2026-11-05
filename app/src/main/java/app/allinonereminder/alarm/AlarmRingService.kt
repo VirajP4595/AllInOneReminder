@@ -39,6 +39,10 @@ class AlarmRingService : Service() {
         const val ACTION_STOP_ALL = "app.allinonereminder.action.STOP_ALL"
         const val EXTRA_OCCURRENCE_ID = "extra_occurrence_id"
 
+        /** Tests replace this with a controllable dispatcher so background work is deterministic. */
+        @androidx.annotation.VisibleForTesting
+        var coroutineDispatcher: kotlinx.coroutines.CoroutineDispatcher = Dispatchers.Default
+
         fun stopForOccurrence(context: Context, occurrenceId: String) {
             val intent = Intent(context, AlarmRingService::class.java).apply {
                 action = ACTION_STOP_OCCURRENCE
@@ -74,7 +78,7 @@ class AlarmRingService : Service() {
     private var vibrator: Vibrator? = null
     private val handler = Handler(Looper.getMainLooper())
     private val exceptionHandler = CoroutineExceptionHandler { _, _ -> }
-    private val scope = CoroutineScope(Dispatchers.Default + SupervisorJob() + exceptionHandler)
+    private val scope = CoroutineScope(coroutineDispatcher + SupervisorJob() + exceptionHandler)
 
     private var silenceRunnable: Runnable? = null
     private val activeOccurrenceIds = Collections.synchronizedSet(mutableSetOf<String>())
@@ -213,6 +217,12 @@ class AlarmRingService : Service() {
 
         val nm = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
         nm.notify(AlarmNotificationHelper.NOTIFICATION_ID_RINGING, notification)
+
+        // Show the alarm over whatever app is in use (needs "Display over other apps"); the
+        // notification's full-screen intent still covers the locked-screen case.
+        if (highestCriticality != Criticality.GENTLE) {
+            AlarmLauncher.launch(this@AlarmRingService, occurrenceIds)
+        }
 
         // Mark occurrences as RINGING and increment ringCount
         val now = System.currentTimeMillis()
