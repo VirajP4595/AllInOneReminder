@@ -65,10 +65,12 @@ import app.allinonereminder.model.Occurrence
 import app.allinonereminder.model.OccurrenceStatus
 import app.allinonereminder.model.Profile
 import app.allinonereminder.model.Schedule
+import app.allinonereminder.model.ScheduleAnchorType
 import app.allinonereminder.model.SkipReason
 import app.allinonereminder.schedule.SchedulingEngine
 import dagger.hilt.android.AndroidEntryPoint
 import dagger.hilt.android.lifecycle.HiltViewModel
+import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -97,6 +99,7 @@ data class AlarmUiState(
 
 @HiltViewModel
 class AlarmViewModel @Inject constructor(
+    @ApplicationContext private val context: Context,
     private val occurrenceRepository: OccurrenceRepository,
     private val itemRepository: ItemRepository,
     private val profileRepository: ProfileRepository,
@@ -122,6 +125,51 @@ class AlarmViewModel @Inject constructor(
         }
     }
 
+    fun handleNotificationTake(occurrenceIds: Array<String>) {
+        viewModelScope.launch {
+            val now = Instant.now()
+            val list = mutableListOf<AlarmItemUiModel>()
+            var warningOcc: Occurrence? = null
+            var warningTimeStr: String? = null
+
+            for (id in occurrenceIds) {
+                val occ = occurrenceRepository.getByIdSync(id) ?: continue
+                val item = itemRepository.getItemSync(occ.itemId) ?: continue
+                val profile = profileRepository.getProfileSync(occ.profileId)
+                val schedule = scheduleRepository.getScheduleSync(occ.scheduleId)
+                list.add(AlarmItemUiModel(occ, item, schedule, profile))
+
+                if (warningOcc == null) {
+                    val lastTaken = occurrenceRepository.getLastTakenBeforeSync(item.id, now.toEpochMilli())
+                    val lastTakenInstant = lastTaken?.actedAt?.let { Instant.ofEpochMilli(it) }
+                    val warning = SchedulingEngine.doseWarning(item, lastTakenInstant, now)
+                    if (warning != null && lastTakenInstant != null) {
+                        val timeFormatter = DateTimeFormatter.ofPattern("HH:mm").withZone(ZoneId.systemDefault())
+                        warningOcc = occ
+                        warningTimeStr = timeFormatter.format(lastTakenInstant)
+                    }
+                }
+            }
+
+            if (warningOcc != null) {
+                // Warning triggered! Populate UI state with items and show warning dialog on AlarmActivity
+                _uiState.value = _uiState.value.copy(
+                    items = list,
+                    warningOccurrenceId = warningOcc.id,
+                    warningTimeStr = warningTimeStr
+                )
+            } else {
+                // No warning: mark all taken via targeted updates, stop ringing, reschedule, and finish
+                for (occUi in list) {
+                    occurrenceRepository.markTakenTargeted(occUi.occurrence.id, now.toEpochMilli())
+                    AlarmRingService.stopForOccurrence(context, occUi.occurrence.id)
+                }
+                alarmCoordinator.reschedule("Notification: Taken Direct")
+                _uiState.value = _uiState.value.copy(finished = true)
+            }
+        }
+    }
+
     fun onTakenClicked(occurrenceId: String, force: Boolean = false) {
         viewModelScope.launch {
             val occUi = _uiState.value.items.firstOrNull { it.occurrence.id == occurrenceId } ?: return@launch
@@ -142,15 +190,8 @@ class AlarmViewModel @Inject constructor(
                 }
             }
 
-            // Mark taken
-            occurrenceRepository.updateOccurrence(
-                occUi.occurrence.copy(
-                    status = OccurrenceStatus.TAKEN,
-                    actedAt = now.toEpochMilli(),
-                    updatedAt = now.toEpochMilli()
-                )
-            )
-
+            // Mark taken via targeted update
+            occurrenceRepository.markTakenTargeted(occurrenceId, now.toEpochMilli())
             dismissWarningDialog()
             checkCompletion(occurrenceId)
         }
@@ -159,14 +200,24 @@ class AlarmViewModel @Inject constructor(
     fun onAllTakenClicked() {
         viewModelScope.launch {
             val now = Instant.now()
+            // Double-dose guard check for all items in group
             for (uiModel in _uiState.value.items) {
-                occurrenceRepository.updateOccurrence(
-                    uiModel.occurrence.copy(
-                        status = OccurrenceStatus.TAKEN,
-                        actedAt = now.toEpochMilli(),
-                        updatedAt = now.toEpochMilli()
+                val lastTaken = occurrenceRepository.getLastTakenBeforeSync(uiModel.item.id, now.toEpochMilli())
+                val lastTakenInstant = lastTaken?.actedAt?.let { Instant.ofEpochMilli(it) }
+                val warning = SchedulingEngine.doseWarning(uiModel.item, lastTakenInstant, now)
+                if (warning != null && lastTakenInstant != null) {
+                    val timeFormatter = DateTimeFormatter.ofPattern("HH:mm").withZone(ZoneId.systemDefault())
+                    _uiState.value = _uiState.value.copy(
+                        warningOccurrenceId = uiModel.occurrence.id,
+                        warningTimeStr = timeFormatter.format(lastTakenInstant)
                     )
-                )
+                    return@launch
+                }
+            }
+
+            for (uiModel in _uiState.value.items) {
+                occurrenceRepository.markTakenTargeted(uiModel.occurrence.id, now.toEpochMilli())
+                AlarmRingService.stopForOccurrence(context, uiModel.occurrence.id)
             }
             alarmCoordinator.reschedule("Alarm: All Taken")
             _uiState.value = _uiState.value.copy(finished = true)
@@ -175,17 +226,9 @@ class AlarmViewModel @Inject constructor(
 
     fun onSnoozeClicked(occurrenceId: String, minutes: Int) {
         viewModelScope.launch {
-            val occUi = _uiState.value.items.firstOrNull { it.occurrence.id == occurrenceId } ?: return@launch
             val now = Instant.now()
             val newDue = now.toEpochMilli() + minutes * 60_000L
-
-            occurrenceRepository.updateOccurrence(
-                occUi.occurrence.copy(
-                    status = OccurrenceStatus.SNOOZED,
-                    dueAt = newDue,
-                    updatedAt = now.toEpochMilli()
-                )
-            )
+            occurrenceRepository.snoozeTargeted(occurrenceId, newDue)
             dismissSnoozeDialog()
             checkCompletion(occurrenceId)
         }
@@ -193,18 +236,8 @@ class AlarmViewModel @Inject constructor(
 
     fun onSkipClicked(occurrenceId: String, reason: SkipReason, note: String? = null) {
         viewModelScope.launch {
-            val occUi = _uiState.value.items.firstOrNull { it.occurrence.id == occurrenceId } ?: return@launch
             val now = Instant.now()
-
-            occurrenceRepository.updateOccurrence(
-                occUi.occurrence.copy(
-                    status = OccurrenceStatus.SKIPPED,
-                    actedAt = now.toEpochMilli(),
-                    skipReason = reason.name,
-                    note = note,
-                    updatedAt = now.toEpochMilli()
-                )
-            )
+            occurrenceRepository.markSkippedTargeted(occurrenceId, now.toEpochMilli(), reason.name, note)
             dismissSkipDialog()
             checkCompletion(occurrenceId)
         }
@@ -218,34 +251,25 @@ class AlarmViewModel @Inject constructor(
             val meal = sched?.meal
 
             if (afterEating && meal != null) {
-                // Open a meal session
+                // Open a meal session and post ongoing notification
                 val todayStr = LocalDate.now(ZoneId.systemDefault()).toString()
-                mealSessionRepository.startMealSession(
-                    profileId = occUi.profile?.id ?: occUi.occurrence.profileId,
+                val targetProfileId = occUi.profile?.id ?: occUi.occurrence.profileId
+                val session = mealSessionRepository.startMealSession(
+                    profileId = targetProfileId,
                     meal = meal,
                     date = todayStr,
                     startedAt = now.toEpochMilli()
                 )
+                AlarmNotificationHelper.postMealNotification(context, targetProfileId, meal, session.id)
+
                 // Set status to DEFERRED_MEAL with 90 min + offset fallback
                 val offset = sched.offsetMinutes ?: 0
                 val fallbackDue = now.toEpochMilli() + (90 + offset) * 60_000L
-                occurrenceRepository.updateOccurrence(
-                    occUi.occurrence.copy(
-                        status = OccurrenceStatus.DEFERRED_MEAL,
-                        dueAt = fallbackDue,
-                        updatedAt = now.toEpochMilli()
-                    )
-                )
+                occurrenceRepository.deferMealTargeted(occurrenceId, fallbackDue)
             } else {
                 // Snooze for specified minutes
                 val newDue = now.toEpochMilli() + deferMinutes * 60_000L
-                occurrenceRepository.updateOccurrence(
-                    occUi.occurrence.copy(
-                        status = OccurrenceStatus.SNOOZED,
-                        dueAt = newDue,
-                        updatedAt = now.toEpochMilli()
-                    )
-                )
+                occurrenceRepository.snoozeTargeted(occurrenceId, newDue)
             }
 
             checkCompletion(occurrenceId)
@@ -261,20 +285,58 @@ class AlarmViewModel @Inject constructor(
 
             if (meal != null) {
                 val todayStr = LocalDate.now(ZoneId.systemDefault()).toString()
-                mealSessionRepository.startMealSession(
-                    profileId = occUi.profile?.id ?: occUi.occurrence.profileId,
+                val targetProfileId = occUi.profile?.id ?: occUi.occurrence.profileId
+                val session = mealSessionRepository.startMealSession(
+                    profileId = targetProfileId,
                     meal = meal,
                     date = todayStr,
                     startedAt = now.toEpochMilli()
                 )
+                AlarmNotificationHelper.postMealNotification(context, targetProfileId, meal, session.id)
+
+                // Re-time AFTER-meal items for this profile on this day (§15)
+                val unresolved = occurrenceRepository.getUnresolvedSync().filter { it.profileId == targetProfileId }
+                val schedules = scheduleRepository.getAllActiveSchedulesSync().associateBy { it.id }
+                for (occ in unresolved) {
+                    val s = schedules[occ.scheduleId]
+                    if (s != null && s.anchorType == ScheduleAnchorType.MEAL && s.meal == meal && s.relation == MealRelation.AFTER) {
+                        val offsetMillis = (s.offsetMinutes ?: 0) * 60_000L
+                        val newDue = now.toEpochMilli() + offsetMillis
+                        occurrenceRepository.updateOccurrence(
+                            occ.copy(
+                                status = OccurrenceStatus.PENDING,
+                                plannedAt = newDue,
+                                dueAt = newDue,
+                                updatedAt = now.toEpochMilli()
+                            )
+                        )
+                    }
+                }
             }
-            // Mark item taken
-            onTakenClicked(occurrenceId, force = true)
+
+            // Stop ringing service for this occurrence; DO NOT mark taken per §15
+            AlarmRingService.stopForOccurrence(context, occurrenceId)
+            alarmCoordinator.reschedule("Alarm: Starting meal now")
         }
     }
 
     private suspend fun checkCompletion(actedOccurrenceId: String) {
+        AlarmRingService.stopForOccurrence(context, actedOccurrenceId)
+        val now = Instant.now()
         val remaining = _uiState.value.items.filter { it.occurrence.id != actedOccurrenceId }
+
+        // Group re-ring: remaining items get dueAt = now + reRingMinutes (§16 / review B3)
+        for (itemUi in remaining) {
+            val reRingMs = itemUi.item.reRingMinutes * 60_000L
+            val newDue = now.toEpochMilli() + reRingMs
+            occurrenceRepository.updateOccurrence(
+                itemUi.occurrence.copy(
+                    dueAt = newDue,
+                    updatedAt = now.toEpochMilli()
+                )
+            )
+        }
+
         _uiState.value = _uiState.value.copy(items = remaining)
         alarmCoordinator.reschedule("Alarm: Acted on $actedOccurrenceId")
         if (remaining.isEmpty()) {
@@ -306,6 +368,10 @@ class AlarmViewModel @Inject constructor(
 @AndroidEntryPoint
 class AlarmActivity : ComponentActivity() {
 
+    companion object {
+        const val ACTION_TAKE_NOTIFICATION = "app.allinonereminder.action.TAKE_NOTIFICATION"
+    }
+
     private val viewModel: AlarmViewModel by viewModels()
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -328,7 +394,11 @@ class AlarmActivity : ComponentActivity() {
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
 
         val occurrenceIds = intent.getStringArrayExtra(AlarmCoordinator.EXTRA_OCCURRENCE_IDS) ?: emptyArray()
-        viewModel.loadOccurrences(occurrenceIds)
+        if (intent.action == ACTION_TAKE_NOTIFICATION) {
+            viewModel.handleNotificationTake(occurrenceIds)
+        } else {
+            viewModel.loadOccurrences(occurrenceIds)
+        }
 
         setContent {
             MaterialTheme {

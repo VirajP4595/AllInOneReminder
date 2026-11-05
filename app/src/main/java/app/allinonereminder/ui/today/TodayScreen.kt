@@ -39,7 +39,8 @@ fun TodayScreen(
     onSnooze: (OccurrenceUiModel) -> Unit = {},
     onSkip: (OccurrenceUiModel, SkipReason) -> Unit = { _, _ -> },
     onFixExactAlarm: () -> Unit = {},
-    onStartMeal: (MealType) -> Unit = {},
+    onStartMeal: (MealType, String?) -> Unit = { _, _ -> },
+    onEndMeal: (MealSession) -> Unit = {},
     onOccurrenceClick: (OccurrenceUiModel) -> Unit = {}
 ) {
     var showMealDialog by remember { mutableStateOf(false) }
@@ -122,6 +123,14 @@ fun TodayScreen(
                 nextAlarmEpochMillis = uiState.nextAlarmEpochMillis,
                 onStartMealClick = { showMealDialog = true }
             )
+
+            // Active meal session banner if in progress
+            if (uiState.activeMealSession != null) {
+                ActiveMealSessionCard(
+                    session = uiState.activeMealSession,
+                    onDoneEating = { onEndMeal(uiState.activeMealSession) }
+                )
+            }
 
             // Timeline of occurrences
             if (uiState.occurrences.isEmpty()) {
@@ -213,22 +222,49 @@ fun TodayScreen(
         )
     }
 
-    // Meal Selection Dialog
+    // Meal Selection Dialog with explicit profile choice when "All" is selected per §17/review B4
     if (showMealDialog) {
+        var selectedProfileForMeal by remember(showMealDialog) {
+            mutableStateOf(uiState.selectedProfileId ?: if (uiState.profiles.size == 1) uiState.profiles.first().id else null)
+        }
+
         AlertDialog(
             onDismissRequest = { showMealDialog = false },
             icon = { Icon(Icons.Default.Restaurant, contentDescription = null) },
             title = { Text("Starting a Meal") },
             text = {
                 Column {
+                    if (uiState.selectedProfileId == null && uiState.profiles.size > 1) {
+                        Text("Select person:", fontWeight = FontWeight.Bold)
+                        Spacer(modifier = Modifier.height(8.dp))
+                        uiState.profiles.forEach { profile ->
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(vertical = 2.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                RadioButton(
+                                    selected = selectedProfileForMeal == profile.id,
+                                    onClick = { selectedProfileForMeal = profile.id }
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text(profile.name)
+                            }
+                        }
+                        Spacer(modifier = Modifier.height(12.dp))
+                    }
                     Text("Select which meal you are starting now. Meal-relative doses will adapt immediately:")
                     Spacer(modifier = Modifier.height(16.dp))
                     MealType.entries.forEach { meal ->
                         Button(
                             onClick = {
-                                onStartMeal(meal)
+                                selectedProfileForMeal?.let { pid ->
+                                    onStartMeal(meal, pid)
+                                }
                                 showMealDialog = false
                             },
+                            enabled = selectedProfileForMeal != null,
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .padding(vertical = 4.dp)
@@ -487,6 +523,71 @@ private fun StatusChip(status: OccurrenceStatus) {
             fontWeight = FontWeight.Bold,
             modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
         )
+    }
+}
+
+@Composable
+private fun ActiveMealSessionCard(
+    session: MealSession,
+    onDoneEating: () -> Unit
+) {
+    val mealName = session.meal.name.lowercase().replaceFirstChar { it.uppercase() }
+    val timeFormatter = DateTimeFormatter.ofPattern("h:mm a").withZone(ZoneId.systemDefault())
+    val startedStr = timeFormatter.format(Instant.ofEpochMilli(session.startedAt))
+
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 6.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.tertiaryContainer),
+        shape = RoundedCornerShape(12.dp)
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(14.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.weight(1f)
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Restaurant,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onTertiaryContainer,
+                    modifier = Modifier.size(28.dp)
+                )
+                Spacer(modifier = Modifier.width(12.dp))
+                Column {
+                    Text(
+                        text = "Having $mealName",
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onTertiaryContainer
+                    )
+                    Text(
+                        text = "Started at $startedStr",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onTertiaryContainer.copy(alpha = 0.8f)
+                    )
+                }
+            }
+
+            Button(
+                onClick = onDoneEating,
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = MaterialTheme.colorScheme.primary,
+                    contentColor = MaterialTheme.colorScheme.onPrimary
+                ),
+                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
+            ) {
+                Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(16.dp))
+                Spacer(modifier = Modifier.width(4.dp))
+                Text("Done")
+            }
+        }
     }
 }
 
