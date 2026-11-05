@@ -138,7 +138,7 @@ class SyncEngine(
 
     private fun applyRemote(remoteRow: RemoteRow, payload: ByteArray): Boolean {
         val existing = local.get(remoteRow.key)
-        when (remoteRow.key.entityType) {
+        return when (remoteRow.key.entityType) {
             EntityTypes.OCCURRENCE_ACTION, EntityTypes.CHANGE_LOG -> {
                 // Append-only: an event id is immutable. Never overwrite an existing event.
                 if (existing == null) {
