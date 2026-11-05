@@ -2,7 +2,22 @@ begin;
 
 create extension if not exists pgtap with schema extensions;
 
-select plan(40);
+select plan(63);
+
+-- Helpers (temp schema, run with the caller's rights so RLS applies) -------
+create function pg_temp.as_user(p_uid uuid) returns text language sql as $$
+    select set_config('request.jwt.claims',
+        json_build_object('sub', p_uid, 'role', 'authenticated')::text, true)
+        || set_config('request.jwt.claim.sub', p_uid::text, true);
+$$;
+create function pg_temp.rows_affected(p_sql text) returns int language plpgsql as $$
+declare n int;
+begin
+    execute p_sql;
+    get diagnostics n = row_count;
+    return n;
+end;
+$$;
 
 -- Fixtures ---------------------------------------------------------------
 insert into auth.users (id) values
@@ -435,6 +450,203 @@ select throws_ok(
     '42501',
     null,
     'removed member cannot write sync rows'
+);
+
+
+-- Review fixes S1-S8 -----------------------------------------------------
+-- Users: A creator of household 1, B removed above, C other household, D a second active member.
+reset role;
+insert into auth.users (id) values ('f0f0f0f0-0000-0000-0000-000000000004');
+set local role authenticated;
+select pg_temp.as_user('aaaaaaaa-0000-0000-0000-000000000001');
+
+select lives_ok(
+    $$ insert into public.members (household_id, user_id)
+       values ('11111111-1111-1111-1111-111111111111', 'f0f0f0f0-0000-0000-0000-000000000004') $$,
+    'S1 setup: an active member adds another member'
+);
+
+-- S1: removal is soft and permanent.
+select is(
+    pg_temp.rows_affected($$ delete from public.members
+        where user_id = 'bbbbbbbb-0000-0000-0000-000000000002' $$),
+    0,
+    'S1: member rows cannot be deleted'
+);
+
+select throws_ok(
+    $$ update public.members set removed_at = null
+       where household_id = '11111111-1111-1111-1111-111111111111'
+         and user_id = 'bbbbbbbb-0000-0000-0000-000000000002' $$,
+    '23514',
+    'removal_is_permanent',
+    'S1: a removed member cannot be un-removed'
+);
+
+select pg_temp.as_user('bbbbbbbb-0000-0000-0000-000000000002');
+select throws_ok(
+    $$ insert into public.members (household_id, user_id)
+       values ('11111111-1111-1111-1111-111111111111', 'bbbbbbbb-0000-0000-0000-000000000002') $$,
+    '42501',
+    null,
+    'S1: a removed member cannot re-add themselves'
+);
+
+-- S1: a creator who removes themselves cannot re-enter or add members.
+select pg_temp.as_user('aaaaaaaa-0000-0000-0000-000000000001');
+insert into public.households (id, created_by)
+values ('33333333-3333-3333-3333-333333333333', 'aaaaaaaa-0000-0000-0000-000000000001');
+insert into public.members (household_id, user_id)
+values ('33333333-3333-3333-3333-333333333333', 'aaaaaaaa-0000-0000-0000-000000000001');
+update public.members set removed_at = now()
+where household_id = '33333333-3333-3333-3333-333333333333'
+  and user_id = 'aaaaaaaa-0000-0000-0000-000000000001';
+
+select throws_ok(
+    $$ insert into public.members (household_id, user_id)
+       values ('33333333-3333-3333-3333-333333333333', 'f0f0f0f0-0000-0000-0000-000000000004') $$,
+    '42501',
+    null,
+    'S1: a removed creator cannot add members'
+);
+
+select is(
+    (select count(*)::int from public.households
+     where id = '33333333-3333-3333-3333-333333333333'),
+    0,
+    'S1: a removed creator no longer sees the household'
+);
+
+-- S2: only the creator can delete a household.
+select pg_temp.as_user('f0f0f0f0-0000-0000-0000-000000000004');
+select is(
+    pg_temp.rows_affected($$ delete from public.households
+        where id = '11111111-1111-1111-1111-111111111111' $$),
+    0,
+    'S2: a non-creator member cannot delete the household'
+);
+
+select pg_temp.as_user('aaaaaaaa-0000-0000-0000-000000000001');
+insert into public.households (id, created_by)
+values ('44444444-aaaa-4444-8444-444444444444', 'aaaaaaaa-0000-0000-0000-000000000001');
+insert into public.members (household_id, user_id)
+values ('44444444-aaaa-4444-8444-444444444444', 'aaaaaaaa-0000-0000-0000-000000000001');
+select is(
+    pg_temp.rows_affected($$ delete from public.households
+        where id = '44444444-aaaa-4444-8444-444444444444' $$),
+    1,
+    'S2: the creator can delete their household'
+);
+
+-- S3: devices belong to their owner.
+select pg_temp.as_user('f0f0f0f0-0000-0000-0000-000000000004');
+select is(
+    pg_temp.rows_affected($$ update public.devices set fcm_token = 'hijacked'
+        where id = 'dddddddd-0000-0000-0000-000000000001' $$),
+    0,
+    'S3: another member cannot change a device''s FCM token'
+);
+select is(
+    pg_temp.rows_affected($$ delete from public.devices
+        where id = 'dddddddd-0000-0000-0000-000000000001' $$),
+    0,
+    'S3: another member cannot delete a device'
+);
+
+select pg_temp.as_user('aaaaaaaa-0000-0000-0000-000000000001');
+select lives_ok(
+    $$ update public.devices set fcm_token = 'mine'
+       where id = 'dddddddd-0000-0000-0000-000000000001' $$,
+    'S3: the owner can update their own device'
+);
+select throws_ok(
+    $$ update public.devices set user_id = 'f0f0f0f0-0000-0000-0000-000000000004'
+       where id = 'dddddddd-0000-0000-0000-000000000001' $$,
+    '23514',
+    'device_identity_immutable',
+    'S3: a device cannot be handed to another user'
+);
+
+-- S4: notification modes are written only by the device owner.
+select pg_temp.as_user('f0f0f0f0-0000-0000-0000-000000000004');
+select is(
+    pg_temp.rows_affected($$ update public.device_profile_prefs set mode = 'OFF'
+        where device_id = 'dddddddd-0000-0000-0000-000000000001' $$),
+    0,
+    'S4: another member cannot change a device''s mode'
+);
+select throws_ok(
+    $$ insert into public.device_profile_prefs (device_id, profile_ref, mode)
+       values ('dddddddd-0000-0000-0000-000000000001', 'profile-ref-2', 'OFF') $$,
+    '42501',
+    null,
+    'S4: another member cannot add a mode for someone else''s device'
+);
+
+-- S5: member identity is immutable.
+select pg_temp.as_user('aaaaaaaa-0000-0000-0000-000000000001');
+select throws_ok(
+    $$ update public.members set user_id = 'cccccccc-0000-0000-0000-000000000003'
+       where household_id = '11111111-1111-1111-1111-111111111111'
+         and user_id = 'f0f0f0f0-0000-0000-0000-000000000004' $$,
+    '23514',
+    'member_identity_immutable',
+    'S5: a member row cannot be re-pointed at another user'
+);
+
+-- S6: a write cannot be attributed to someone else's device.
+select pg_temp.as_user('f0f0f0f0-0000-0000-0000-000000000004');
+select throws_ok(
+    $$ insert into public.sync_rows
+           (household_id, entity_type, row_id, version, updated_at, key_version, nonce, ciphertext,
+            updated_by_device)
+       values ('11111111-1111-1111-1111-111111111111', 'item', 'row-spoof', 1, now(), 1, '\x00', '\x01',
+               'dddddddd-0000-0000-0000-000000000001') $$,
+    '23514',
+    'device_not_owned',
+    'S6: updated_by_device must be the caller''s own device'
+);
+
+-- S7: only the creator of an invite can change it.
+select is(
+    pg_temp.rows_affected($$ update public.invites set sealed_key = '\x00'
+        where id = '44444444-4444-4444-4444-444444444444' $$),
+    0,
+    'S7: another member cannot modify an invite'
+);
+
+-- S8: function and table exposure.
+select ok(
+    not has_function_privilege('authenticated', 'public.sync_rows_before_write()', 'execute'),
+    'S8: clients cannot call trigger functions'
+);
+select pg_temp.as_user('cccccccc-0000-0000-0000-000000000003');
+select is(
+    public.device_household('dddddddd-0000-0000-0000-000000000001'),
+    null,
+    'S8: device_household does not reveal households to non-members'
+);
+select ok(
+    not has_table_privilege('anon', 'public.sync_rows', 'select'),
+    'S8: the anon role has no table access'
+);
+
+-- Removed member is locked out of every table, not just sync_rows.
+select pg_temp.as_user('bbbbbbbb-0000-0000-0000-000000000002');
+select is(
+    (select count(*)::int from public.escalation_slots),
+    0,
+    'removed member sees zero escalation slots'
+);
+select is(
+    (select count(*)::int from storage.objects where bucket_id = 'photos'),
+    0,
+    'removed member sees zero photos'
+);
+select is(
+    (select count(*)::int from public.devices),
+    0,
+    'removed member sees zero devices'
 );
 
 -- Structural checks ------------------------------------------------------
