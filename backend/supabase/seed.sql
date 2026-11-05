@@ -1,0 +1,2 @@
+-- No seed data. All health data is client-side ciphertext; the backend only
+-- stores opaque rows. Test fixtures live in supabase/tests/.
