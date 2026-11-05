@@ -1,0 +1,2 @@
+# Rules for core-data
+
