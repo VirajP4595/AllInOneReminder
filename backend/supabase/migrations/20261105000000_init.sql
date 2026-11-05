@@ -135,7 +135,37 @@ stable
 security definer
 set search_path = public
 as $$
-    select d.household_id from public.devices d where d.id = p_device_id;
+    -- Only reveals the household to its own active members (S8).
+    select d.household_id
+    from public.devices d
+    where d.id = p_device_id
+      and public.is_active_member(d.household_id);
+$$;
+
+create or replace function public.household_has_members(p_household_id uuid)
+returns boolean
+language sql
+stable
+security definer
+set search_path = public
+as $$
+    select exists (select 1 from public.members m where m.household_id = p_household_id);
+$$;
+
+create or replace function public.device_owned_by_caller(p_device_id uuid)
+returns boolean
+language sql
+stable
+security definer
+set search_path = public
+as $$
+    select exists (
+        select 1
+        from public.devices d
+        where d.id = p_device_id
+          and d.user_id = auth.uid()
+          and public.is_active_member(d.household_id)
+    );
 $$;
 
 revoke all on function public.is_active_member(uuid) from public;
@@ -161,6 +191,18 @@ begin
         end if;
         if new.version <= old.version then
             raise exception 'stale_version' using errcode = '23514';
+        end if;
+    end if;
+    -- S6: a client may only attribute a write to one of its own devices in this household.
+    -- Service-role writes have no auth.uid() and are not checked.
+    if new.updated_by_device is not null and auth.uid() is not null then
+        if not exists (
+            select 1 from public.devices d
+            where d.id = new.updated_by_device
+              and d.user_id = auth.uid()
+              and d.household_id = new.household_id
+        ) then
+            raise exception 'device_not_owned' using errcode = '23514';
         end if;
     end if;
     -- Every write gets a fresh cursor value, whether insert or update.
@@ -200,6 +242,64 @@ create trigger invites_before_write
 before insert or update on public.invites
 for each row execute function public.invites_before_write();
 
+create or replace function public.members_before_update()
+returns trigger
+language plpgsql
+security invoker
+set search_path = public
+as $$
+begin
+    if new.household_id <> old.household_id or new.user_id <> old.user_id then
+        raise exception 'member_identity_immutable' using errcode = '23514';
+    end if;
+    -- Removal is permanent (S1): a removed member can only rejoin through a new pairing flow.
+    if old.removed_at is not null and new.removed_at is distinct from old.removed_at then
+        raise exception 'removal_is_permanent' using errcode = '23514';
+    end if;
+    return new;
+end;
+$$;
+
+create trigger members_before_update
+before update on public.members
+for each row execute function public.members_before_update();
+
+create or replace function public.devices_before_update()
+returns trigger
+language plpgsql
+security invoker
+set search_path = public
+as $$
+begin
+    if new.user_id <> old.user_id or new.household_id <> old.household_id then
+        raise exception 'device_identity_immutable' using errcode = '23514';
+    end if;
+    return new;
+end;
+$$;
+
+create trigger devices_before_update
+before update on public.devices
+for each row execute function public.devices_before_update();
+
+create or replace function public.households_before_update()
+returns trigger
+language plpgsql
+security invoker
+set search_path = public
+as $$
+begin
+    if new.created_by <> old.created_by then
+        raise exception 'household_creator_immutable' using errcode = '23514';
+    end if;
+    return new;
+end;
+$$;
+
+create trigger households_before_update
+before update on public.households
+for each row execute function public.households_before_update();
+
 -- ---------------------------------------------------------------- RLS
 alter table public.households enable row level security;
 alter table public.members enable row level security;
@@ -211,26 +311,34 @@ alter table public.escalation_slots enable row level security;
 
 -- households: active members, plus the creator while bootstrapping the first member row.
 create policy households_select on public.households for select to authenticated
-    using (public.is_active_member(id) or created_by = auth.uid());
+    using (
+        public.is_active_member(id)
+        or (created_by = auth.uid() and not public.household_has_members(id))
+    );
 create policy households_insert on public.households for insert to authenticated
     with check (created_by = auth.uid());
 create policy households_update on public.households for update to authenticated
     using (public.is_active_member(id)) with check (public.is_active_member(id));
 create policy households_delete on public.households for delete to authenticated
-    using (public.is_active_member(id));
+    using (created_by = auth.uid() and public.is_active_member(id));
 
--- members: any active member can read and edit (PLAN §0); the creator adds the first row.
+-- members: any active member can read and edit (PLAN §0). The creator may add only the very first
+-- row, and rows are never deleted: removal is a soft, permanent removed_at.
 create policy members_select on public.members for select to authenticated
     using (public.is_active_member(household_id));
 create policy members_insert on public.members for insert to authenticated
     with check (
-        public.is_active_member(household_id) or public.is_household_creator(household_id)
+        public.is_active_member(household_id)
+        or (
+            public.is_household_creator(household_id)
+            and not public.household_has_members(household_id)
+        )
     );
+-- WITH CHECK is true on purpose: it runs on the new row, which is no longer active after a
+-- removal, so requiring activeness would block self-removal. The trigger above freezes identity.
 create policy members_update on public.members for update to authenticated
     using (public.is_active_member(household_id))
-    with check (public.is_active_member(household_id));
-create policy members_delete on public.members for delete to authenticated
-    using (public.is_active_member(household_id));
+    with check (true);
 
 -- invites: household members only. The invitee-side handshake RPC is added with P2-B1.
 create policy invites_select on public.invites for select to authenticated
@@ -238,8 +346,8 @@ create policy invites_select on public.invites for select to authenticated
 create policy invites_insert on public.invites for insert to authenticated
     with check (public.is_active_member(household_id) and created_by = auth.uid());
 create policy invites_update on public.invites for update to authenticated
-    using (public.is_active_member(household_id))
-    with check (public.is_active_member(household_id));
+    using (public.is_active_member(household_id) and created_by = auth.uid())
+    with check (public.is_active_member(household_id) and created_by = auth.uid());
 create policy invites_delete on public.invites for delete to authenticated
     using (public.is_active_member(household_id));
 
@@ -249,21 +357,22 @@ create policy devices_select on public.devices for select to authenticated
 create policy devices_insert on public.devices for insert to authenticated
     with check (user_id = auth.uid() and public.is_active_member(household_id));
 create policy devices_update on public.devices for update to authenticated
-    using (public.is_active_member(household_id))
-    with check (public.is_active_member(household_id));
+    using (user_id = auth.uid() and public.is_active_member(household_id))
+    with check (user_id = auth.uid() and public.is_active_member(household_id));
 create policy devices_delete on public.devices for delete to authenticated
-    using (public.is_active_member(household_id));
+    using (user_id = auth.uid() and public.is_active_member(household_id));
 
 -- device_profile_prefs: resolved through the device's household.
 create policy device_profile_prefs_select on public.device_profile_prefs for select to authenticated
     using (public.is_active_member(public.device_household(device_id)));
+-- Writes only for your own device (S4); reads for the whole household.
 create policy device_profile_prefs_insert on public.device_profile_prefs for insert to authenticated
-    with check (public.is_active_member(public.device_household(device_id)));
+    with check (public.device_owned_by_caller(device_id));
 create policy device_profile_prefs_update on public.device_profile_prefs for update to authenticated
-    using (public.is_active_member(public.device_household(device_id)))
-    with check (public.is_active_member(public.device_household(device_id)));
+    using (public.device_owned_by_caller(device_id))
+    with check (public.device_owned_by_caller(device_id));
 create policy device_profile_prefs_delete on public.device_profile_prefs for delete to authenticated
-    using (public.is_active_member(public.device_household(device_id)));
+    using (public.device_owned_by_caller(device_id));
 
 -- sync_rows: every command is scoped to an active member of the row's household.
 create policy sync_rows_select on public.sync_rows for select to authenticated
@@ -289,9 +398,20 @@ create policy escalation_slots_delete on public.escalation_slots for delete to a
 
 -- ---------------------------------------------------------------- grants
 grant usage on schema public to authenticated;
+revoke all on all tables in schema public from anon;
+revoke all on all sequences in schema public from anon;
+revoke all on all functions in schema public from anon;
 grant select, insert, update, delete on all tables in schema public to authenticated;
 grant usage, select on all sequences in schema public to authenticated;
-grant execute on all functions in schema public to authenticated;
+-- S8: clients may call only the helpers that RLS policies need; trigger functions and any
+-- later server-side function stay unreachable from the API.
+revoke execute on all functions in schema public from public, anon, authenticated;
+grant execute on function public.is_active_member(uuid) to authenticated;
+grant execute on function public.is_household_creator(uuid) to authenticated;
+grant execute on function public.household_has_members(uuid) to authenticated;
+grant execute on function public.device_owned_by_caller(uuid) to authenticated;
+grant execute on function public.device_household(uuid) to authenticated;
+alter default privileges in schema public revoke execute on functions from public, anon, authenticated;
 
 -- ---------------------------------------------------------------- storage: encrypted photos
 insert into storage.buckets (id, name, public)
