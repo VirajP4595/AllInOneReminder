@@ -161,7 +161,7 @@ object Pairing {
             ((derived[1].toLong() and 0xff) shl 16) or
             ((derived[2].toLong() and 0xff) shl 8) or
             (derived[3].toLong() and 0xff)
-        return String.format(Locale.ROOT, "%06d", value % 1_000_000L)
+        return String.format(Locale.ROOT, "%08d", value % 100_000_000L)
     }
 
     private fun handshakeAad(invite: PairingInvite, inviteePublicKey: ByteArray): ByteArray {

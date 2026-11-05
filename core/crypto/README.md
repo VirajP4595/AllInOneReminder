@@ -10,7 +10,7 @@ Phase 1 merges.
 - **Rows:** AES-256-GCM (Tink `AesGcmJce`) with associated data
   `household_id|entity_type|row_id|version|key_version`.
 - **Photos:** Tink AES-GCM-HKDF streaming AEAD, so large files are processed in segments.
-- **Pairing:** X25519 HPKE (DHKEM X25519 + HKDF-SHA256 + AES-256-GCM) seals the HK, plus a 6-digit
+- **Pairing:** X25519 HPKE (DHKEM X25519 + HKDF-SHA256 + AES-256-GCM) seals the HK, plus an 8-digit
   verification code derived from the handshake transcript.
 - **Recovery phrase:** 24 BIP-39 English words with checksum, also encodable as a QR payload.
 - **Rotation:** a pure lazy sequence that decrypts every row with the current HK and re-encrypts it
@@ -49,3 +49,9 @@ CI: `.github/workflows/core-crypto.yml`. The build fails if line coverage is bel
   display different codes.
 - **No `toString` leaks.** `HouseholdKey`, `RecoveryPhrase` and mnemonic errors never include key
   bytes or words.
+
+- **Verification code is 8 digits, not 6 (review C1).** The code is the only defence against a
+  server that substitutes keys during pairing. With 6 digits a malicious server could re-seal the
+  household key with fresh randomness until both phones happen to show the same code, roughly a
+  million attempts. Eight digits makes that about a hundred times more work. The six-digit
+  *invite* code (an access code stored hashed on the server) is unchanged and is not a secret.

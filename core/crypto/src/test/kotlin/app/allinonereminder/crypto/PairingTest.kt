@@ -24,7 +24,7 @@ class PairingTest {
             Pairing.verificationCode(inviter.invite, invitee.publicKey, sealed),
             Pairing.verificationCode(inviter.invite, invitee.publicKey, sealed),
         )
-        assertEquals(6, Pairing.verificationCode(inviter.invite, invitee.publicKey, sealed).length)
+        assertEquals(8, Pairing.verificationCode(inviter.invite, invitee.publicKey, sealed).length)
     }
 
     @Test
