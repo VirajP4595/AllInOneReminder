@@ -17,11 +17,13 @@ class SyncEngine(
     private val actionCodec: ActionCodec,
     private val deviceId: String,
     private val batchSize: Int = 200,
+    private val pullOverlap: Long = DEFAULT_PULL_OVERLAP,
     private val clock: () -> Long = System::currentTimeMillis,
 ) {
     init {
         require(deviceId.isNotBlank()) { "deviceId must not be blank" }
         require(batchSize > 0) { "batchSize must be > 0" }
+        require(pullOverlap >= 0) { "pullOverlap must be >= 0" }
     }
 
     fun pushOnce(): PushStats {
@@ -45,24 +47,36 @@ class SyncEngine(
         return PushStats(pushed, rejected, rounds)
     }
 
+    /**
+     * Pulls from `committed - pullOverlap`, not from `committed`. `server_seq` is assigned when a
+     * server transaction starts, not when it commits, so a row with a lower seq can become visible
+     * after a higher one was already pulled. Re-reading a small overlap window picks those rows up;
+     * replays are no-ops because the merge is idempotent. Only rows that are new or actually change
+     * local state count as `applied`.
+     */
     fun pullOnce(): PullStats {
-        var cursor = local.lastPulledSeq()
+        val committed = local.lastPulledSeq()
+        var cursor = maxOf(0L, committed - pullOverlap)
         var applied = 0
         var pages = 0
+        var high = committed
         while (true) {
             val page = remote.pull(cursor, batchSize)
             check(page.nextSeq >= cursor) { "remote cursor moved backwards" }
             val decrypted = page.rows.map { row -> row to cipher.decrypt(ciphertext(row), aad(row)) }
-            decrypted.forEach { (row, payload) -> applyRemote(row, payload) }
-            local.markPullCommitted(page.nextSeq)
-            applied += page.rows.size
+            decrypted.forEach { (row, payload) ->
+                val changed = applyRemote(row, payload)
+                if (changed || row.serverSeq > committed) applied++
+            }
+            high = maxOf(high, page.nextSeq)
+            local.markPullCommitted(high)
             pages++
             val previous = cursor
             cursor = page.nextSeq
             if (!page.hasMore || page.rows.isEmpty()) break
             check(cursor > previous) { "remote page did not advance the cursor" }
         }
-        return PullStats(applied, pages, cursor)
+        return PullStats(applied, pages, high)
     }
 
     fun syncOnce(): SyncStats {
@@ -105,7 +119,12 @@ class SyncEngine(
      * tombstone's `server_seq`.
      */
     fun purgeTombstones(now: Long = clock()): Int {
-        val minimumCursor = (remote.deviceCursors().map { it.lastPullSeq } + local.lastPulledSeq()).min()
+        // A device that has not synced for DEVICE_SILENCE_MILLIS no longer holds tombstones back; if
+        // it ever returns it must do a full resync instead of an incremental pull.
+        val active = remote.deviceCursors().filter { cursor ->
+            cursor.lastSeenAt == null || now - cursor.lastSeenAt <= DEVICE_SILENCE_MILLIS
+        }
+        val minimumCursor = (active.map { it.lastPullSeq } + local.lastPulledSeq()).min()
         val cutoff = now - TOMBSTONE_RETENTION_MILLIS
         val candidates = local.allRows().filter { row ->
             row.deleted &&
@@ -117,36 +136,51 @@ class SyncEngine(
         return candidates.size
     }
 
-    private fun applyRemote(remoteRow: RemoteRow, payload: ByteArray) {
+    private fun applyRemote(remoteRow: RemoteRow, payload: ByteArray): Boolean {
         val existing = local.get(remoteRow.key)
         when (remoteRow.key.entityType) {
             EntityTypes.OCCURRENCE_ACTION, EntityTypes.CHANGE_LOG -> {
                 // Append-only: an event id is immutable. Never overwrite an existing event.
-                if (existing == null) local.upsert(remoteToLocal(remoteRow, payload, dirty = false))
+                if (existing == null) {
+                    local.upsert(remoteToLocal(remoteRow, payload, dirty = false))
+                    true
+                } else {
+                    false
+                }
             }
 
             else -> mergeLastWriterWins(existing, remoteRow, payload)
         }
     }
 
-    private fun mergeLastWriterWins(existing: LocalRow?, remoteRow: RemoteRow, payload: ByteArray) {
+    private fun mergeLastWriterWins(existing: LocalRow?, remoteRow: RemoteRow, payload: ByteArray): Boolean {
         if (existing == null) {
             local.upsert(remoteToLocal(remoteRow, payload, dirty = false))
-            return
+            return true
         }
         val order = compare(existing, remoteRow)
-        when {
-            order < 0 -> local.upsert(remoteToLocal(remoteRow, payload, dirty = false))
+        return when {
+            order < 0 -> {
+                local.upsert(remoteToLocal(remoteRow, payload, dirty = false))
+                true
+            }
             order == 0 -> if (existing.dirty) {
                 local.upsert(existing.copy(dirty = false, serverSeq = remoteRow.serverSeq))
+                true
             } else if (existing.serverSeq != remoteRow.serverSeq) {
                 local.upsert(existing.copy(serverSeq = remoteRow.serverSeq))
+                true
+            } else {
+                false
             }
 
             else -> if (existing.dirty && existing.version <= remoteRow.version) {
                 // The local value wins LWW but the server rejected it as stale. Bumping the version
                 // makes the next push acceptable without discarding the local edit.
                 local.upsert(existing.copy(version = remoteRow.version + 1))
+                true
+            } else {
+                false
             }
         }
     }
@@ -206,6 +240,8 @@ class SyncEngine(
 
     companion object {
         const val TOMBSTONE_RETENTION_MILLIS: Long = 30L * 24 * 60 * 60 * 1000
+        const val DEFAULT_PULL_OVERLAP: Long = 1_000
+        const val DEVICE_SILENCE_MILLIS: Long = 60L * 24 * 60 * 60 * 1000
         private const val MAX_PUSH_ROUNDS = 100
     }
 }

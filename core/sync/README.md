@@ -11,7 +11,7 @@ implementations.
 - **Stale versions:** the server rejects `version <= stored version`; the engine then pulls, merges
   and retries. If the local value still wins LWW, its version is bumped above the server's so the
   retry succeeds.
-- **Pull:** fetches pages after `lastPulledSeq`; every row in a page is decrypted before any is
+- **Pull:** fetches pages starting `pullOverlap` (default 1000) sequence values *before* `lastPulledSeq`, because `server_seq` is a cursor hint, not an ordering guarantee: it is assigned when a server transaction starts, so a lower value can commit after a higher one was already pulled. Replays are no-ops and are not counted as applied. Every row in a page is decrypted before any is
   applied, and the cursor is advanced only after the local commit. A replayed page is idempotent.
 - **Conflicts:** last-writer-wins per row by `(version, updated_at, device_id)`.
 - **Events:** `occurrence_action` and `change_log` rows are append-only and merged by event id.
@@ -19,7 +19,10 @@ implementations.
   `DUPLICATE_ACTION` with a pointer to the winner. `SyncEngine.lastTakenAt(itemId)` feeds the
   cross-device double-dose guard.
 - **Tombstones:** purge only when the tombstone is 30 days old **and** every active device's
-  `last_pull_seq` is at or past its `server_seq`.
+  `last_pull_seq` is at or past its `server_seq`. A device whose `lastSeenAt` is more than 60 days
+  old is not "active": it stops holding tombstones back, and if it ever returns it must do a full
+  resync (pull from 0 into an empty store) rather than an incremental pull, because the tombstones
+  it missed are gone.
 - **Batching:** push rounds and pull pages are bounded; `syncUntilIdle()` repeats until no dirty
   rows or new remote rows remain.
 

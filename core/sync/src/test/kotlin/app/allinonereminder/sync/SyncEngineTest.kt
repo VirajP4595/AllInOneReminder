@@ -299,4 +299,94 @@ class SyncEngineTest {
             OccurrenceAction("event", "occ", "item", ActionKind.TAKEN, 1, " ")
         }
     }
+
+    @Test
+    fun `a row committed late with a lower server sequence is still pulled`() {
+        val server = FakeServer()
+        val lateRemote = RemoteRow(
+            key = RowKey("household-1", "item", "late"),
+            version = 1,
+            updatedAt = 1,
+            updatedByDevice = "device-a",
+            deleted = false,
+            keyVersion = 1,
+            nonce = ByteArray(12) { 7 },
+            ciphertext = FakeRowCipher().encrypt(
+                "value-late".toByteArray(),
+                RowAad("household-1", "item", "late", 1, 1),
+            ).ciphertext,
+            serverSeq = 0,
+        )
+        val earlyRemote = lateRemote.copy(
+            key = RowKey("household-1", "item", "early"),
+            ciphertext = FakeRowCipher().encrypt(
+                "value-early".toByteArray(),
+                RowAad("household-1", "item", "early", 1, 1),
+            ).ciphertext,
+        )
+        // seq 6 becomes visible first; seq 5 commits afterwards.
+        server.commitWithSeq(earlyRemote, 6)
+
+        val reader = InMemoryLocalStore()
+        val engine = engine(reader, server, "device-b")
+        engine.pullOnce()
+        assertEquals(6, reader.lastPulledSeq())
+        assertEquals(listOf("early"), reader.allRows().map { it.key.rowId })
+
+        server.commitWithSeq(lateRemote, 5)
+        val stats = engine.pullOnce()
+
+        assertEquals(1, stats.applied)
+        assertEquals(6, reader.lastPulledSeq())
+        assertEquals(setOf("early", "late"), reader.allRows().map { it.key.rowId }.toSet())
+    }
+
+    @Test
+    fun `replaying the overlap window changes nothing and reports zero applied`() {
+        val server = FakeServer()
+        val phoneA = InMemoryLocalStore()
+        repeat(3) { phoneA.put(testRow(rowId = "row-$it", updatedAt = it.toLong())) }
+        engine(phoneA, server, "device-a").pushOnce()
+        val phoneB = InMemoryLocalStore()
+        val b = engine(phoneB, server, "device-b")
+
+        assertEquals(3, b.pullOnce().applied)
+        val second = b.pullOnce()
+
+        assertEquals(0, second.applied)
+        assertEquals(3, second.cursor)
+        assertEquals(3, phoneB.allRows().size)
+    }
+
+    @Test
+    fun `a device silent for sixty days no longer holds tombstones back`() {
+        val now = 200L * 24 * 60 * 60 * 1000
+        val day = 24L * 60 * 60 * 1000
+        val server = FakeServer()
+        val phone = InMemoryLocalStore()
+        phone.put(
+            testRow(rowId = "gone", deleted = true, updatedAt = now - 40 * day, serverSeq = 5, dirty = false),
+        )
+        phone.markPullCommitted(5)
+        val engine = engine(phone, server, "device-a")
+
+        server.recordCursor("lost-phone", 0, lastSeenAt = now - 61 * day)
+        assertEquals(1, engine.purgeTombstones(now))
+    }
+
+    @Test
+    fun `a device seen within sixty days still holds tombstones back`() {
+        val now = 200L * 24 * 60 * 60 * 1000
+        val day = 24L * 60 * 60 * 1000
+        val server = FakeServer()
+        val phone = InMemoryLocalStore()
+        phone.put(
+            testRow(rowId = "kept", deleted = true, updatedAt = now - 40 * day, serverSeq = 5, dirty = false),
+        )
+        phone.markPullCommitted(5)
+        val engine = engine(phone, server, "device-a")
+
+        server.recordCursor("slow-phone", 0, lastSeenAt = now - 59 * day)
+        assertEquals(0, engine.purgeTombstones(now))
+    }
 }

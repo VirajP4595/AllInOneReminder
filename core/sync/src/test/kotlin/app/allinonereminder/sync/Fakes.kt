@@ -110,6 +110,7 @@ class InMemoryLocalStore(initial: List<LocalRow> = emptyList()) : LocalStore {
 class FakeServer : RemoteStore {
     private val rows = LinkedHashMap<RowKey, RemoteRow>()
     private val cursors = LinkedHashMap<String, Long>()
+    private val seen = LinkedHashMap<String, Long?>()
     private var sequence = 0L
     var failPushAfter: Int? = null
     var failPullOnCall: Int? = null
@@ -153,10 +154,20 @@ class FakeServer : RemoteStore {
         return PullPage(page, next, hasMore)
     }
 
-    override fun deviceCursors(): List<DeviceCursor> = cursors.map { DeviceCursor(it.key, it.value) }
+    override fun deviceCursors(): List<DeviceCursor> = cursors.map { DeviceCursor(it.key, it.value, seen[it.key]) }
 
-    fun recordCursor(deviceId: String, seq: Long) {
+    fun recordCursor(deviceId: String, seq: Long, lastSeenAt: Long? = null) {
         cursors[deviceId] = seq
+        seen[deviceId] = lastSeenAt
+    }
+
+    /**
+     * Stores a row with an explicit `server_seq`, simulating a transaction that took its sequence
+     * value early but committed after a higher one was already visible.
+     */
+    fun commitWithSeq(row: RemoteRow, seq: Long) {
+        rows[row.key] = row.copy(serverSeq = seq)
+        if (seq > sequence) sequence = seq
     }
 
     fun row(key: RowKey): RemoteRow? = rows[key]

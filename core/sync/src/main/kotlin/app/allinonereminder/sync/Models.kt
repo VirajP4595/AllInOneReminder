@@ -63,6 +63,8 @@ data class RemoteRow(
 data class DeviceCursor(
     val deviceId: String,
     val lastPullSeq: Long,
+    /** Epoch millis of the device's last sync, or null when the server does not know. */
+    val lastSeenAt: Long? = null,
 )
 
 enum class ActionKind {
