@@ -27,7 +27,7 @@ object AlarmNotificationHelper {
     fun buildPlaceholderNotification(context: Context): Notification {
         createNotificationChannels(context)
         return NotificationCompat.Builder(context, CHANNEL_NORMAL)
-            .setSmallIcon(android.R.drawable.ic_lock_idle_alarm)
+            .setSmallIcon(R.drawable.ic_stat_alarm)
             .setContentTitle("Medicine reminder")
             .setContentText("Checking reminder details...")
             .setPriority(NotificationCompat.PRIORITY_MAX)
@@ -149,14 +149,14 @@ object AlarmNotificationHelper {
 
         // Public notification on secure lock screen (§19: "No medicine data in notification text on secure lock screen")
         val publicNotification = NotificationCompat.Builder(context, channelId)
-            .setSmallIcon(android.R.drawable.ic_lock_idle_alarm)
+            .setSmallIcon(R.drawable.ic_stat_alarm)
             .setContentTitle("Medicine reminder")
             .setContentText("You have a scheduled reminder")
             .setCategory(NotificationCompat.CATEGORY_ALARM)
             .build()
 
         val builder = NotificationCompat.Builder(context, channelId)
-            .setSmallIcon(android.R.drawable.ic_lock_idle_alarm)
+            .setSmallIcon(R.drawable.ic_stat_alarm)
             .setContentTitle(title)
             .setContentText(content)
             .setCategory(NotificationCompat.CATEGORY_ALARM)
@@ -207,7 +207,7 @@ object AlarmNotificationHelper {
         val mealName = mealType.name.lowercase().replaceFirstChar { it.uppercase() }
 
         return NotificationCompat.Builder(context, CHANNEL_MEAL)
-            .setSmallIcon(android.R.drawable.ic_menu_today)
+            .setSmallIcon(R.drawable.ic_stat_alarm)
             .setContentTitle("Eating $mealName")
             .setContentText("Tap 'Done Eating' when finished to trigger post-meal reminders")
             .setContentIntent(appPendingIntent)

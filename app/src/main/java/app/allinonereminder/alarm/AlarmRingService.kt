@@ -214,6 +214,12 @@ class AlarmRingService : Service() {
         val nm = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
         nm.notify(AlarmNotificationHelper.NOTIFICATION_ID_RINGING, notification)
 
+        // Show the alarm over whatever app is in use (needs "Display over other apps"); the
+        // notification's full-screen intent still covers the locked-screen case.
+        if (highestCriticality != Criticality.GENTLE) {
+            AlarmLauncher.launch(this@AlarmRingService, occurrenceIds)
+        }
+
         // Mark occurrences as RINGING and increment ringCount
         val now = System.currentTimeMillis()
         for (occ in occurrences) {
