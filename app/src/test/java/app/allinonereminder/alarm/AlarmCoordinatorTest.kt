@@ -92,6 +92,13 @@ class AlarmCoordinatorTest {
         db.close()
     }
 
+    /**
+     * Wall-clock minute-of-day [offsetMinutes] from now. Tests must not hard-code a clock time:
+     * CI runs at arbitrary hours, so "22:00 (future today)" fails whenever it runs near 22:00.
+     */
+    private fun minuteFromNow(offsetMinutes: Int): Int =
+        (java.time.LocalTime.now(ZoneId.systemDefault()).toSecondOfDay() / 60 + offsetMinutes + 1440) % 1440
+
     @Test
     fun alarmCoordinator_isIdempotent_andRegistersSingleAlarmClock() = runBlocking {
         val profile = profileRepo.createProfile("Mom", 0xFF0000, deviceId = "dev-1")
@@ -121,7 +128,7 @@ class AlarmCoordinatorTest {
             id = UUID.randomUUID().toString(),
             itemId = itemId,
             anchorType = ScheduleAnchorType.FIXED,
-            minuteOfDay = 23 * 60, // 23:00 (future today)
+            minuteOfDay = minuteFromNow(240), // 4 h from now
             recurrence = RecurrenceType.DAILY,
             anchorDate = todayStr,
             createdAt = System.currentTimeMillis(),
@@ -173,7 +180,7 @@ class AlarmCoordinatorTest {
             id = UUID.randomUUID().toString(),
             itemId = itemId,
             anchorType = ScheduleAnchorType.FIXED,
-            minuteOfDay = 7 * 60,
+            minuteOfDay = minuteFromNow(180),
             recurrence = RecurrenceType.DAILY,
             anchorDate = todayStr,
             createdAt = System.currentTimeMillis(),
@@ -277,7 +284,7 @@ class AlarmCoordinatorTest {
             id = "sched-edit-1",
             itemId = item.id,
             anchorType = ScheduleAnchorType.FIXED,
-            minuteOfDay = 22 * 60, // 22:00 (future today)
+            minuteOfDay = minuteFromNow(180), // 3 h from now
             recurrence = RecurrenceType.DAILY,
             anchorDate = todayStr,
             createdAt = System.currentTimeMillis(),
@@ -292,7 +299,7 @@ class AlarmCoordinatorTest {
         val oldFirstId = occsInitial.first().id
 
         // 2. User edits schedule time to 23:00 (23 * 60)
-        scheduleRepo.updateSchedule(schedule1.copy(minuteOfDay = 23 * 60), "dev-1")
+        scheduleRepo.updateSchedule(schedule1.copy(minuteOfDay = minuteFromNow(240)), "dev-1")
 
         // 3. Reconcile
         val res = coordinator.reschedule("edit time to 23:00")
@@ -336,7 +343,7 @@ class AlarmCoordinatorTest {
             id = "sched-to-del",
             itemId = item.id,
             anchorType = ScheduleAnchorType.FIXED,
-            minuteOfDay = 11 * 60,
+            minuteOfDay = minuteFromNow(180),
             recurrence = RecurrenceType.DAILY,
             anchorDate = todayStr,
             createdAt = System.currentTimeMillis(),
@@ -393,7 +400,7 @@ class AlarmCoordinatorTest {
             id = "sched-alice",
             itemId = item.id,
             anchorType = ScheduleAnchorType.FIXED,
-            minuteOfDay = 15 * 60,
+            minuteOfDay = minuteFromNow(180),
             recurrence = RecurrenceType.DAILY,
             anchorDate = todayStr,
             createdAt = System.currentTimeMillis(),
@@ -451,23 +458,23 @@ class AlarmCoordinatorTest {
         scheduleRepo.createSchedule(schedule, "dev-1")
 
         // 1. Initial Breakfast anchor at 08:00 (480 min)
-        val dayType = if (java.time.LocalDate.now().dayOfWeek.value in 1..5) {
-            app.allinonereminder.model.DayType.WEEKDAY
-        } else {
-            app.allinonereminder.model.DayType.WEEKEND
+        // Update the breakfast anchor for every day type, so the planned row is covered whichever
+        // day it falls on. Offset is BEFORE 30 min, so the occurrence is ~3 h from now.
+        val breakfastAnchors = mealAnchorRepo.getAnchorsSync(profile.id).filter {
+            it.meal == app.allinonereminder.model.MealType.BREAKFAST
         }
-        val existingAnchor = mealAnchorRepo.getAnchorsSync(profile.id).first {
-            it.meal == app.allinonereminder.model.MealType.BREAKFAST && it.dayType == dayType
+        breakfastAnchors.forEach {
+            mealAnchorRepo.updateAnchor(it.copy(minuteOfDay = minuteFromNow(210)), "dev-1")
         }
-        val initialAnchor = existingAnchor.copy(minuteOfDay = 8 * 60)
-        mealAnchorRepo.updateAnchor(initialAnchor, "dev-1")
 
         coordinator.reschedule("initial anchor 08:00")
         val occs1 = occurrenceRepo.getUnresolvedSync()
         val oldId = occs1.first().id
 
         // 2. Change Breakfast anchor to 09:30 (570 min)
-        mealAnchorRepo.updateAnchor(initialAnchor.copy(minuteOfDay = 9 * 60 + 30), "dev-1")
+        breakfastAnchors.forEach {
+            mealAnchorRepo.updateAnchor(it.copy(minuteOfDay = minuteFromNow(270)), "dev-1")
+        }
 
         // 3. Reconcile
         coordinator.reschedule("anchor changed to 09:30")
@@ -482,17 +489,18 @@ class AlarmCoordinatorTest {
         assertThat(newOccs.first().id).isNotEqualTo(oldId)
     }
 
-    @Test
-    fun falseMissed_snoozePastPlannedPlusGrace_remainsSnoozedOrPendingAndNotMissed() = runBlocking {
+    /** Builds an item with 60 min grace and one unresolved occurrence at the given state. */
+    private suspend fun seedOccurrence(
+        occId: String,
+        plannedMinutesAgo: Long,
+        remindInMinutes: Long,
+        status: OccurrenceStatus,
+    ) {
         val now = System.currentTimeMillis()
-        // Planned 70 min ago with 60 min grace (past plannedAt + grace)
-        val plannedAt = now - 70 * 60_000L
-        // But user snoozed it to 10 min in the future
-        val dueAt = now + 10 * 60_000L
-
+        val plannedAt = now - plannedMinutesAgo * 60_000L
         val profile = profileRepo.createProfile("Mom", 0xFF0000, deviceId = "dev-1")
         val item = Item(
-            id = "item-snooze-test",
+            id = "item-$occId",
             profileId = profile.id,
             type = ItemType.MEDICINE,
             name = "Blood Pressure",
@@ -508,72 +516,60 @@ class AlarmCoordinatorTest {
             updatedAt = now
         )
         itemRepo.createItem(item, "dev-1")
-
-        val occ = Occurrence(
-            id = "snoozed-occ-1",
-            itemId = item.id,
-            scheduleId = "s-1",
-            profileId = profile.id,
-            plannedAt = plannedAt,
-            dueAt = dueAt,
-            status = OccurrenceStatus.SNOOZED,
-            deviceId = "dev-1",
-            updatedAt = now
+        occurrenceRepo.upsertOccurrences(
+            listOf(
+                Occurrence(
+                    id = occId,
+                    itemId = item.id,
+                    scheduleId = "s-$occId",
+                    profileId = profile.id,
+                    plannedAt = plannedAt,
+                    dueAt = plannedAt, // the intended time never moves
+                    remindAt = now + remindInMinutes * 60_000L, // only the next ring moves
+                    status = status,
+                    ringCount = 1,
+                    deviceId = "dev-1",
+                    updatedAt = now
+                )
+            )
         )
-        occurrenceRepo.upsertOccurrences(listOf(occ))
-
-        coordinator.reschedule("check snooze not false missed")
-
-        val afterCheck = occurrenceRepo.getByIdSync("snoozed-occ-1")
-        // Must NOT be MISSED because now < max(plannedAt, dueAt) + graceMinutes
-        assertThat(afterCheck?.status).isEqualTo(OccurrenceStatus.SNOOZED)
     }
 
     @Test
-    fun falseMissed_mealDeferralPastPlannedPlusGrace_remainsDeferredAndNotMissed() = runBlocking {
-        val now = System.currentTimeMillis()
-        // Planned at 09:00 (80 min ago), grace 60 min
-        val plannedAt = now - 80 * 60_000L
-        // User deferred meal, due time set to 30 min in the future
-        val dueAt = now + 30 * 60_000L
+    fun snoozeWithinGrace_staysSnoozed_andIsNotFalselyMissed() = runBlocking {
+        seedOccurrence("snz-in", plannedMinutesAgo = 30, remindInMinutes = 10, status = OccurrenceStatus.SNOOZED)
 
-        val profile = profileRepo.createProfile("Mom", 0xFF0000, deviceId = "dev-1")
-        val item = Item(
-            id = "item-defer-test",
-            profileId = profile.id,
-            type = ItemType.MEDICINE,
-            name = "Diabetes Pill",
-            dosageAmount = "500",
-            dosageUnit = "mg",
-            criticality = Criticality.NORMAL,
-            graceMinutes = 60,
-            reRingMinutes = 5,
-            timePolicy = TimePolicy.LOCAL_WALL_CLOCK,
-            homeZoneId = ZoneId.systemDefault().id,
-            startDate = "2026-01-01",
-            createdAt = now,
-            updatedAt = now
-        )
-        itemRepo.createItem(item, "dev-1")
+        coordinator.reschedule("within grace")
 
-        val occ = Occurrence(
-            id = "deferred-occ-1",
-            itemId = item.id,
-            scheduleId = "s-defer",
-            profileId = profile.id,
-            plannedAt = plannedAt,
-            dueAt = dueAt,
-            status = OccurrenceStatus.DEFERRED_MEAL,
-            deviceId = "dev-1",
-            updatedAt = now
-        )
-        occurrenceRepo.upsertOccurrences(listOf(occ))
+        assertThat(occurrenceRepo.getByIdSync("snz-in")?.status).isEqualTo(OccurrenceStatus.SNOOZED)
+    }
 
-        coordinator.reschedule("check deferred not false missed")
+    @Test
+    fun snoozePastGrace_isMissedFromTheIntendedDueTime_notFromTheSnoozeTime() = runBlocking {
+        // Intended 70 min ago, grace 60: snoozing must not buy extra time.
+        seedOccurrence("snz-out", plannedMinutesAgo = 70, remindInMinutes = 10, status = OccurrenceStatus.SNOOZED)
 
-        val afterCheck = occurrenceRepo.getByIdSync("deferred-occ-1")
-        // Must NOT be marked MISSED while deferred
-        assertThat(afterCheck?.status).isEqualTo(OccurrenceStatus.DEFERRED_MEAL)
+        coordinator.reschedule("past grace")
+
+        assertThat(occurrenceRepo.getByIdSync("snz-out")?.status).isEqualTo(OccurrenceStatus.MISSED)
+    }
+
+    @Test
+    fun mealDeferralWithinGrace_staysDeferred_andIsNotFalselyMissed() = runBlocking {
+        seedOccurrence("def-in", plannedMinutesAgo = 20, remindInMinutes = 30, status = OccurrenceStatus.DEFERRED_MEAL)
+
+        coordinator.reschedule("deferred within grace")
+
+        assertThat(occurrenceRepo.getByIdSync("def-in")?.status).isEqualTo(OccurrenceStatus.DEFERRED_MEAL)
+    }
+
+    @Test
+    fun mealDeferralPastGrace_isMissedFromTheIntendedDueTime() = runBlocking {
+        seedOccurrence("def-out", plannedMinutesAgo = 80, remindInMinutes = 30, status = OccurrenceStatus.DEFERRED_MEAL)
+
+        coordinator.reschedule("deferred past grace")
+
+        assertThat(occurrenceRepo.getByIdSync("def-out")?.status).isEqualTo(OccurrenceStatus.MISSED)
     }
 
     @Test
@@ -603,7 +599,7 @@ class AlarmCoordinatorTest {
             id = "sched-zone",
             itemId = item.id,
             anchorType = ScheduleAnchorType.FIXED,
-            minuteOfDay = 9 * 60,
+            minuteOfDay = minuteFromNow(180),
             recurrence = RecurrenceType.DAILY,
             anchorDate = todayStr,
             createdAt = now,
@@ -692,7 +688,7 @@ class AlarmCoordinatorTest {
             id = "sched-snooze",
             itemId = item.id,
             anchorType = ScheduleAnchorType.FIXED,
-            minuteOfDay = 22 * 60, // 22:00
+            minuteOfDay = minuteFromNow(180), // 3 h from now
             recurrence = RecurrenceType.DAILY,
             anchorDate = todayStr,
             createdAt = now,
@@ -707,21 +703,15 @@ class AlarmCoordinatorTest {
 
         // User snoozes for 10 minutes
         val snoozeTarget = now + 10 * 60_000L
-        occurrenceRepo.updateOccurrence(
-            occ.copy(
-                status = OccurrenceStatus.SNOOZED,
-                dueAt = snoozeTarget,
-                remindAt = snoozeTarget,
-                updatedAt = now
-            )
-        )
+        // The same repository call every snooze surface uses (alarm screen, notification, Today)
+        assertThat(occurrenceRepo.snoozeTargeted(occ.id, snoozeTarget)).isTrue()
 
-        // Reschedule must NOT revert snooze back to PENDING or old dueAt!
+        // Reschedule must NOT revert the snooze, and must register the alarm at the snooze time!
         val res = coordinator.reschedule("after snooze")
         val after = occurrenceRepo.getByIdSync(occ.id)
 
         assertThat(after?.status).isEqualTo(OccurrenceStatus.SNOOZED)
-        assertThat(after?.dueAt).isEqualTo(snoozeTarget)
+        assertThat(after?.dueAt).isEqualTo(occ.dueAt) // intended time unchanged
         assertThat(after?.remindAt).isEqualTo(snoozeTarget)
         assertThat(res.dueAtEpochMillis).isEqualTo(snoozeTarget)
     }
@@ -752,7 +742,7 @@ class AlarmCoordinatorTest {
             id = "sched-autosilence",
             itemId = item.id,
             anchorType = ScheduleAnchorType.FIXED,
-            minuteOfDay = 22 * 60,
+            minuteOfDay = minuteFromNow(180),
             recurrence = RecurrenceType.DAILY,
             anchorDate = todayStr,
             createdAt = now,
@@ -808,7 +798,7 @@ class AlarmCoordinatorTest {
             id = "sched-rering-missed",
             itemId = item.id,
             anchorType = ScheduleAnchorType.FIXED,
-            minuteOfDay = 22 * 60,
+            minuteOfDay = minuteFromNow(180),
             recurrence = RecurrenceType.DAILY,
             anchorDate = todayStr,
             createdAt = now,
@@ -863,7 +853,7 @@ class AlarmCoordinatorTest {
             id = "sched-defer-survive",
             itemId = item.id,
             anchorType = ScheduleAnchorType.FIXED,
-            minuteOfDay = 22 * 60,
+            minuteOfDay = minuteFromNow(180),
             recurrence = RecurrenceType.DAILY,
             anchorDate = todayStr,
             createdAt = now,
@@ -876,19 +866,13 @@ class AlarmCoordinatorTest {
 
         // User taps "I haven't eaten yet -> in 30 min"
         val deferredDue = now + 30 * 60_000L
-        occurrenceRepo.updateOccurrence(
-            occ.copy(
-                status = OccurrenceStatus.SNOOZED,
-                dueAt = deferredDue,
-                remindAt = deferredDue,
-                updatedAt = now
-            )
-        )
+        assertThat(occurrenceRepo.deferMealTargeted(occ.id, deferredDue)).isTrue()
 
         val res = coordinator.reschedule("after deferral")
         val updated = occurrenceRepo.getByIdSync(occ.id)
-        assertThat(updated?.status).isEqualTo(OccurrenceStatus.SNOOZED)
-        assertThat(updated?.dueAt).isEqualTo(deferredDue)
+        assertThat(updated?.status).isEqualTo(OccurrenceStatus.DEFERRED_MEAL)
+        assertThat(updated?.dueAt).isEqualTo(occ.dueAt)
+        assertThat(updated?.remindAt).isEqualTo(deferredDue)
         assertThat(res.dueAtEpochMillis).isEqualTo(deferredDue)
     }
 
@@ -936,7 +920,7 @@ class AlarmCoordinatorTest {
             id = "sched-group-1",
             itemId = item1.id,
             anchorType = ScheduleAnchorType.FIXED,
-            minuteOfDay = 22 * 60,
+            minuteOfDay = minuteFromNow(180),
             recurrence = RecurrenceType.DAILY,
             anchorDate = todayStr,
             createdAt = now,
@@ -946,7 +930,7 @@ class AlarmCoordinatorTest {
             id = "sched-group-2",
             itemId = item2.id,
             anchorType = ScheduleAnchorType.FIXED,
-            minuteOfDay = 22 * 60,
+            minuteOfDay = minuteFromNow(180),
             recurrence = RecurrenceType.DAILY,
             anchorDate = todayStr,
             createdAt = now,
@@ -999,7 +983,7 @@ class AlarmCoordinatorTest {
             id = "sched-snooze-edit",
             itemId = item.id,
             anchorType = ScheduleAnchorType.FIXED,
-            minuteOfDay = 22 * 60,
+            minuteOfDay = minuteFromNow(180),
             recurrence = RecurrenceType.DAILY,
             anchorDate = todayStr,
             createdAt = now,
@@ -1017,14 +1001,15 @@ class AlarmCoordinatorTest {
             oldOcc.copy(
                 status = OccurrenceStatus.SNOOZED,
                 plannedAt = pastPlanned,
-                dueAt = snoozeTime,
+                dueAt = pastPlanned,
                 remindAt = snoozeTime,
+                ringCount = 1,
                 updatedAt = now
             )
         )
 
         // User edits schedule time to 23:00 (which sets schedule.updatedAt = now + 1000)
-        scheduleRepo.updateSchedule(schedule.copy(minuteOfDay = 23 * 60, updatedAt = now + 1000L), "dev-1")
+        scheduleRepo.updateSchedule(schedule.copy(minuteOfDay = minuteFromNow(240), updatedAt = now + 1000L), "dev-1")
 
         val res = coordinator.reschedule("edit schedule while snoozed")
         assertThat(res.registered).isTrue()

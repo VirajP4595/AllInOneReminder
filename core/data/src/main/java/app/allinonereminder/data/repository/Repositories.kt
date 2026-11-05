@@ -349,15 +349,16 @@ class OccurrenceRepository(
         return count > 0
     }
 
-    suspend fun snoozeTargeted(id: String, newDueAt: Long): Boolean {
+    /** Moves only `remindAt`; `dueAt` stays the intended time so MISSED is judged from it (R2-1). */
+    suspend fun snoozeTargeted(id: String, newRemindAt: Long): Boolean {
         val now = System.currentTimeMillis()
-        val count = occurrenceDao.snoozeTargeted(id, newDueAt, now)
+        val count = occurrenceDao.snoozeTargeted(id, newRemindAt, now)
         return count > 0
     }
 
-    suspend fun deferMealTargeted(id: String, newDueAt: Long): Boolean {
+    suspend fun deferMealTargeted(id: String, newRemindAt: Long): Boolean {
         val now = System.currentTimeMillis()
-        val count = occurrenceDao.deferMealTargeted(id, newDueAt, now)
+        val count = occurrenceDao.deferMealTargeted(id, newRemindAt, now)
         return count > 0
     }
 

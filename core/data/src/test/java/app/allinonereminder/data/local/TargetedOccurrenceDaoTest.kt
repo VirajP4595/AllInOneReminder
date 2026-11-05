@@ -108,5 +108,48 @@ class TargetedOccurrenceDaoTest {
         assertThat(occurrenceDao.getByIdSync("occ-obsolete-1")?.status).isEqualTo(OccurrenceStatus.SUPERSEDED)
         assertThat(occurrenceDao.getByIdSync("occ-taken-2")?.status).isEqualTo(OccurrenceStatus.TAKEN)
     }
-}
 
+    @Test
+    fun snoozeTargeted_movesOnlyRemindAt_andKeepsTheIntendedDueAt() = runBlocking {
+        val now = 1700000000000L
+        occurrenceDao.upsertAll(
+            listOf(
+                OccurrenceEntity(
+                    id = "occ-snooze", itemId = "item-1", scheduleId = "sched-1", profileId = "prof-1",
+                    plannedAt = now, dueAt = now, remindAt = now, status = OccurrenceStatus.RINGING,
+                    ringCount = 1, deviceId = "dev-1", updatedAt = now
+                )
+            )
+        )
+
+        val rows = occurrenceDao.snoozeTargeted("occ-snooze", now + 600_000L, now + 1)
+        assertThat(rows).isEqualTo(1)
+
+        val after = occurrenceDao.getByIdSync("occ-snooze")
+        assertThat(after?.status).isEqualTo(OccurrenceStatus.SNOOZED)
+        assertThat(after?.remindAt).isEqualTo(now + 600_000L)
+        assertThat(after?.dueAt).isEqualTo(now)
+        assertThat(after?.plannedAt).isEqualTo(now)
+    }
+
+    @Test
+    fun deferMealTargeted_movesOnlyRemindAt_andKeepsTheIntendedDueAt() = runBlocking {
+        val now = 1700000000000L
+        occurrenceDao.upsertAll(
+            listOf(
+                OccurrenceEntity(
+                    id = "occ-defer", itemId = "item-1", scheduleId = "sched-1", profileId = "prof-1",
+                    plannedAt = now, dueAt = now, remindAt = now, status = OccurrenceStatus.PENDING,
+                    ringCount = 0, deviceId = "dev-1", updatedAt = now
+                )
+            )
+        )
+
+        occurrenceDao.deferMealTargeted("occ-defer", now + 7_200_000L, now + 1)
+
+        val after = occurrenceDao.getByIdSync("occ-defer")
+        assertThat(after?.status).isEqualTo(OccurrenceStatus.DEFERRED_MEAL)
+        assertThat(after?.remindAt).isEqualTo(now + 7_200_000L)
+        assertThat(after?.dueAt).isEqualTo(now)
+    }
+}

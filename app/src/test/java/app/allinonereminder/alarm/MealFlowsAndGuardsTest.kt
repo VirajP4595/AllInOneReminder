@@ -158,16 +158,13 @@ class MealFlowsAndGuardsTest {
         // Starts meal session and sets status to DEFERRED_MEAL with 90 min + offset fallback
         val session = mealSessionRepo.startMealSession(profile.id, MealType.LUNCH, todayStr, now)
         val fallbackDue = now + (90 + 30) * 60_000L
-        occurrenceRepo.updateOccurrence(
-            occ.copy(
-                status = OccurrenceStatus.DEFERRED_MEAL,
-                dueAt = fallbackDue,
-                updatedAt = now
-            )
-        )
+        // Same repository call the alarm screen uses: only remindAt moves, dueAt stays intended.
+        occurrenceRepo.deferMealTargeted(occ.id, fallbackDue)
 
         val deferredOcc = occurrenceRepo.getByIdSync(occ.id)
         assertThat(deferredOcc?.status).isEqualTo(OccurrenceStatus.DEFERRED_MEAL)
+        assertThat(deferredOcc?.remindAt).isEqualTo(fallbackDue)
+        assertThat(deferredOcc?.dueAt).isEqualTo(occ.dueAt)
 
         // 3. User finishes lunch 45 minutes later
         val finishedAt = now + 45 * 60_000L
@@ -770,9 +767,10 @@ class MealFlowsAndGuardsTest {
         assertThat(occurrenceRepo.getByIdSync(occ1.id)?.status).isEqualTo(OccurrenceStatus.TAKEN)
         assertThat(alarmViewModel.uiState.value.finished).isFalse()
 
-        // Occurrence 2 dueAt was updated to future (now + reRingMinutes 10 min)
+        // Occurrence 2 remindAt moved to the future (now + reRingMinutes 10 min); dueAt is unchanged
         val remainingOcc = occurrenceRepo.getByIdSync(occ2.id)
-        assertThat(remainingOcc?.dueAt).isAtLeast(now + 9 * 60_000L)
+        assertThat(remainingOcc?.remindAt).isAtLeast(now + 9 * 60_000L)
+        assertThat(remainingOcc?.dueAt).isEqualTo(occ2.dueAt)
     }
 
     @Test
