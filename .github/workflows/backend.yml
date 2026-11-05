@@ -31,3 +31,18 @@ jobs:
         run: supabase db reset
       - name: Run pgTAP RLS tests
         run: supabase test db
+
+  deno:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+      - name: Type-check Edge Function entrypoints
+        run: deno check supabase/functions/escalate/index.ts supabase/functions/heartbeat-watch/index.ts
+      - name: Test Edge Functions with a mocked FCM endpoint
+        run: deno test supabase/functions
