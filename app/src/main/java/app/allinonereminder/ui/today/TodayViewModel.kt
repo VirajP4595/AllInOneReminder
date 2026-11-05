@@ -135,9 +135,9 @@ class TodayViewModel @Inject constructor(
 
         val now = System.currentTimeMillis()
         val nextDue = todayOccurrences
-            .filter { it.status in listOf(OccurrenceStatus.PENDING, OccurrenceStatus.SNOOZED, OccurrenceStatus.DEFERRED_MEAL) && it.dueAt >= now }
-            .minByOrNull { it.dueAt }
-            ?.dueAt
+            .filter { it.status in listOf(OccurrenceStatus.PENDING, OccurrenceStatus.SNOOZED, OccurrenceStatus.DEFERRED_MEAL) && it.remindAt >= now }
+            .minByOrNull { it.remindAt }
+            ?.remindAt
 
         TodayUiState(
             profiles = profiles,
@@ -210,7 +210,7 @@ class TodayViewModel @Inject constructor(
             occurrenceRepository.updateOccurrence(
                 uiModel.occurrence.copy(
                     status = OccurrenceStatus.SNOOZED,
-                    dueAt = newDue,
+                    remindAt = newDue,
                     updatedAt = now
                 )
             )
@@ -282,6 +282,7 @@ class TodayViewModel @Inject constructor(
                             status = OccurrenceStatus.PENDING,
                             plannedAt = newDue,
                             dueAt = newDue,
+                            remindAt = newDue,
                             updatedAt = now
                         )
                     )
@@ -312,6 +313,7 @@ class TodayViewModel @Inject constructor(
                             occ.copy(
                                 status = OccurrenceStatus.PENDING,
                                 dueAt = newDue,
+                                remindAt = newDue,
                                 updatedAt = now
                             )
                         )

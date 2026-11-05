@@ -553,6 +553,7 @@ class BackupManager @Inject constructor(
                 put("profileId", occ.profileId)
                 put("plannedAt", occ.plannedAt)
                 put("dueAt", occ.dueAt)
+                put("remindAt", occ.remindAt)
                 put("status", occ.status.name)
                 put("ringCount", occ.ringCount)
                 putOpt("actedAt", occ.actedAt)
@@ -577,6 +578,7 @@ class BackupManager @Inject constructor(
                     profileId = o.getString("profileId"),
                     plannedAt = o.getLong("plannedAt"),
                     dueAt = o.getLong("dueAt"),
+                    remindAt = o.optLong("remindAt", o.getLong("dueAt")),
                     status = OccurrenceStatus.valueOf(o.getString("status")),
                     ringCount = o.optInt("ringCount", 0),
                     actedAt = if (o.isNull("actedAt")) null else o.getLong("actedAt"),

@@ -100,6 +100,7 @@ class NotificationActionReceiver : BroadcastReceiver() {
                                     status = OccurrenceStatus.PENDING,
                                     plannedAt = newDue,
                                     dueAt = newDue,
+                                    remindAt = newDue,
                                     updatedAt = now.toEpochMilli()
                                 )
                             )
@@ -162,7 +163,7 @@ class NotificationActionReceiver : BroadcastReceiver() {
                     occurrenceRepository.updateOccurrence(
                         occ.copy(
                             status = OccurrenceStatus.SNOOZED,
-                            dueAt = newDueAt,
+                            remindAt = newDueAt,
                             updatedAt = now.toEpochMilli()
                         )
                     )

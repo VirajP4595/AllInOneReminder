@@ -307,6 +307,7 @@ class AlarmViewModel @Inject constructor(
                                 status = OccurrenceStatus.PENDING,
                                 plannedAt = newDue,
                                 dueAt = newDue,
+                                remindAt = newDue,
                                 updatedAt = now.toEpochMilli()
                             )
                         )
@@ -325,13 +326,14 @@ class AlarmViewModel @Inject constructor(
         val now = Instant.now()
         val remaining = _uiState.value.items.filter { it.occurrence.id != actedOccurrenceId }
 
-        // Group re-ring: remaining items get dueAt = now + reRingMinutes (§16 / review B3)
+        // Group re-ring: remaining items get remindAt = now + reRingMinutes; dueAt stays the intended
+        // time so MISSED is still judged from it (§16 / review B3 / R2-1)
         for (itemUi in remaining) {
             val reRingMs = itemUi.item.reRingMinutes * 60_000L
             val newDue = now.toEpochMilli() + reRingMs
             occurrenceRepository.updateOccurrence(
                 itemUi.occurrence.copy(
-                    dueAt = newDue,
+                    remindAt = newDue,
                     updatedAt = now.toEpochMilli()
                 )
             )

@@ -197,11 +197,11 @@ interface OccurrenceDao {
     @Query("UPDATE occurrence SET status = 'SKIPPED', actedAt = :actedAt, updatedAt = :updatedAt, skipReason = :skipReason, note = :note WHERE id = :id AND status IN ('PENDING', 'RINGING', 'SNOOZED', 'DEFERRED_MEAL')")
     suspend fun markSkippedTargeted(id: String, actedAt: Long, updatedAt: Long, skipReason: String?, note: String? = null): Int
 
-    @Query("UPDATE occurrence SET status = 'SNOOZED', dueAt = :newDueAt, updatedAt = :updatedAt WHERE id = :id AND status IN ('PENDING', 'RINGING', 'SNOOZED', 'DEFERRED_MEAL')")
-    suspend fun snoozeTargeted(id: String, newDueAt: Long, updatedAt: Long): Int
+    @Query("UPDATE occurrence SET status = 'SNOOZED', remindAt = :newRemindAt, updatedAt = :updatedAt WHERE id = :id AND status IN ('PENDING', 'RINGING', 'SNOOZED', 'DEFERRED_MEAL')")
+    suspend fun snoozeTargeted(id: String, newRemindAt: Long, updatedAt: Long): Int
 
-    @Query("UPDATE occurrence SET status = 'DEFERRED_MEAL', dueAt = :newDueAt, updatedAt = :updatedAt WHERE id = :id AND status IN ('PENDING', 'RINGING', 'SNOOZED', 'DEFERRED_MEAL')")
-    suspend fun deferMealTargeted(id: String, newDueAt: Long, updatedAt: Long): Int
+    @Query("UPDATE occurrence SET status = 'DEFERRED_MEAL', remindAt = :newRemindAt, updatedAt = :updatedAt WHERE id = :id AND status IN ('PENDING', 'RINGING', 'SNOOZED', 'DEFERRED_MEAL')")
+    suspend fun deferMealTargeted(id: String, newRemindAt: Long, updatedAt: Long): Int
 
     @Query("UPDATE occurrence SET status = 'MISSED', updatedAt = :updatedAt WHERE id = :id AND status IN ('PENDING', 'RINGING', 'SNOOZED', 'DEFERRED_MEAL')")
     suspend fun markMissedTargeted(id: String, updatedAt: Long): Int
