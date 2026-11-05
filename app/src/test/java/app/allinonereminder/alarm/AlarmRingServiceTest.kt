@@ -67,6 +67,17 @@ class AlarmRingServiceTest {
 
     @Test
     fun startForeground_calledBeforeAnyDbAccess_evenWithEmptyOrStaleIds() {
+        // A never-advanced dispatcher keeps the service's background work from running, so the
+        // stale-id path cannot stop the foreground notification before it is asserted.
+        AlarmRingService.coroutineDispatcher = kotlinx.coroutines.test.StandardTestDispatcher()
+        try {
+            startForegroundCheck()
+        } finally {
+            AlarmRingService.coroutineDispatcher = kotlinx.coroutines.Dispatchers.Default
+        }
+    }
+
+    private fun startForegroundCheck() {
         val controller = Robolectric.buildService(AlarmRingService::class.java).create()
         val service = controller.get()
         val shadowService = Shadows.shadowOf(service)
