@@ -12,6 +12,7 @@ import app.allinonereminder.data.local.dao.MealSessionDao
 import app.allinonereminder.data.local.dao.OccurrenceDao
 import app.allinonereminder.data.local.dao.ProfileDao
 import app.allinonereminder.data.local.dao.ScheduleDao
+import app.allinonereminder.data.local.dao.StockEventDao
 import app.allinonereminder.data.repository.ChangeLogRepository
 import app.allinonereminder.data.repository.ItemRepository
 import app.allinonereminder.data.repository.MealAnchorRepository
@@ -20,6 +21,7 @@ import app.allinonereminder.data.repository.OccurrenceRepository
 import app.allinonereminder.data.repository.ProfileRepository
 import app.allinonereminder.data.repository.ScheduleRepository
 import app.allinonereminder.data.repository.SettingsRepository
+import app.allinonereminder.data.repository.StockEventRepository
 import app.allinonereminder.data.repository.dataStore
 import app.allinonereminder.data.security.DatabaseKeyManager
 import dagger.Module
@@ -63,6 +65,7 @@ object DataModule {
         )
             .addMigrations(app.allinonereminder.data.local.MIGRATION_1_2)
             .addMigrations(app.allinonereminder.data.local.MIGRATION_2_3)
+            .addMigrations(app.allinonereminder.data.local.MIGRATION_3_4)
         if (factory != null) {
             builder.openHelperFactory(factory)
         }
@@ -92,6 +95,9 @@ object DataModule {
 
     @Provides
     fun provideChangeLogDao(db: AppDatabase): ChangeLogDao = db.changeLogDao()
+
+    @Provides
+    fun provideStockEventDao(db: AppDatabase): StockEventDao = db.stockEventDao()
 
     @Provides
     @Singleton
@@ -140,8 +146,17 @@ object DataModule {
     @Provides
     @Singleton
     fun provideOccurrenceRepository(
-        occurrenceDao: OccurrenceDao
-    ): OccurrenceRepository = OccurrenceRepository(occurrenceDao)
+        occurrenceDao: OccurrenceDao,
+        stockEventDao: StockEventDao,
+        itemDao: ItemDao,
+        database: AppDatabase
+    ): OccurrenceRepository = OccurrenceRepository(occurrenceDao, stockEventDao, itemDao, database)
+
+    @Provides
+    @Singleton
+    fun provideStockEventRepository(
+        stockEventDao: StockEventDao
+    ): StockEventRepository = StockEventRepository(stockEventDao)
 
     @Provides
     @Singleton

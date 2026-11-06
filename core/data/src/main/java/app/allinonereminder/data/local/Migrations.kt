@@ -25,3 +25,23 @@ val MIGRATION_2_3 = object : Migration(2, 3) {
     }
 }
 
+val MIGRATION_3_4 = object : Migration(3, 4) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE item ADD COLUMN unitsPerDose REAL")
+        db.execSQL("ALTER TABLE item ADD COLUMN refillThreshold REAL")
+        db.execSQL(
+            "CREATE TABLE IF NOT EXISTS `stock_event` (" +
+                "`id` TEXT NOT NULL, " +
+                "`itemId` TEXT NOT NULL, " +
+                "`delta` REAL NOT NULL, " +
+                "`reason` TEXT NOT NULL, " +
+                "`occurrenceId` TEXT, " +
+                "`createdAt` INTEGER NOT NULL, " +
+                "PRIMARY KEY(`id`), " +
+                "FOREIGN KEY(`itemId`) REFERENCES `item`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE" +
+                ")"
+        )
+        db.execSQL("CREATE INDEX IF NOT EXISTS `index_stock_event_itemId` ON `stock_event` (`itemId`)")
+    }
+}
+

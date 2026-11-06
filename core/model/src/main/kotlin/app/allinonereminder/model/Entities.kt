@@ -41,6 +41,8 @@ data class Item(
     val endDate: String? = null, // YYYY-MM-DD
     val exerciseTargetMinutes: Int? = null,
     val maxPerDay: Int? = null, // for PRN (as-needed) items
+    val unitsPerDose: Double? = 1.0,
+    val refillThreshold: Double? = null,
     val active: Boolean = true,
     val createdAt: Long,
     val updatedAt: Long,
@@ -126,3 +128,12 @@ data class ChangeLog(
     val deviceId: String
 )
 
+
+data class StockEvent(
+    val id: String,
+    val itemId: String,
+    val delta: Double,
+    val reason: StockEventReason,
+    val occurrenceId: String? = null,
+    val createdAt: Long
+)

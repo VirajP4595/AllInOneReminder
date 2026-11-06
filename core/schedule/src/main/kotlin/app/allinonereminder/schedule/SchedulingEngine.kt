@@ -43,11 +43,11 @@ object SchedulingEngine {
     fun plan(
         items: List<Item>,
         schedules: List<Schedule>,
-        anchors: List<MealAnchor>,
+        anchors: List<MealAnchor> = emptyList(),
         mealSessions: List<MealSession> = emptyList(),
         from: Instant,
         to: Instant,
-        deviceZone: ZoneId,
+        deviceZone: ZoneId = ZoneId.systemDefault(),
         now: Instant = from
     ): List<PlannedOccurrence> {
         val activeItems = items.filter { it.active && it.deletedAt == null }.associateBy { it.id }

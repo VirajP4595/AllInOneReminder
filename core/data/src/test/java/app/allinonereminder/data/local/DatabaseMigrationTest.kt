@@ -134,4 +134,57 @@ class DatabaseMigrationTest {
 
         db.close()
     }
+
+    @Test
+    fun migrate3To4_createsStockEventTable_andAddsStockColumnsToItem() {
+        var db = helper.createDatabase(testDbName, 3).apply {
+            execSQL(
+                "INSERT INTO item (id, profileId, type, name, dosageAmount, dosageUnit, criticality, graceMinutes, reRingMinutes, timePolicy, homeZoneId, startDate, active, createdAt, updatedAt) " +
+                    "VALUES ('i-1', 'p-1', 'MEDICINE', 'Aspirin', '500', 'mg', 'NORMAL', 60, 5, 'LOCAL_WALL_CLOCK', 'Asia/Kolkata', '2026-01-01', 1, 1000, 1000)"
+            )
+            close()
+        }
+
+        db = helper.runMigrationsAndValidate(testDbName, 4, true, MIGRATION_3_4)
+
+        // Check item columns
+        val itemCursor = db.query("SELECT id, unitsPerDose, refillThreshold FROM item WHERE id = 'i-1'")
+        assertThat(itemCursor.moveToFirst()).isTrue()
+        assertThat(itemCursor.getString(0)).isEqualTo("i-1")
+        assertThat(itemCursor.isNull(1)).isTrue()
+        assertThat(itemCursor.isNull(2)).isTrue()
+        itemCursor.close()
+
+        // Insert and verify stock_event
+        db.execSQL(
+            "INSERT INTO stock_event (id, itemId, delta, reason, occurrenceId, createdAt) " +
+                "VALUES ('se-1', 'i-1', 30.0, 'REFILL', NULL, 1000)"
+        )
+        db.execSQL(
+            "INSERT INTO stock_event (id, itemId, delta, reason, occurrenceId, createdAt) " +
+                "VALUES ('se-2', 'i-1', -1.0, 'TAKEN', 'occ-1', 1001)"
+        )
+
+        val stockCursor = db.query("SELECT id, itemId, delta, reason, occurrenceId, createdAt FROM stock_event WHERE itemId = 'i-1' ORDER BY createdAt ASC")
+        assertThat(stockCursor.moveToFirst()).isTrue()
+        assertThat(stockCursor.getString(0)).isEqualTo("se-1")
+        assertThat(stockCursor.getDouble(2)).isEqualTo(30.0)
+        assertThat(stockCursor.getString(3)).isEqualTo("REFILL")
+        assertThat(stockCursor.isNull(4)).isTrue()
+
+        assertThat(stockCursor.moveToNext()).isTrue()
+        assertThat(stockCursor.getString(0)).isEqualTo("se-2")
+        assertThat(stockCursor.getDouble(2)).isEqualTo(-1.0)
+        assertThat(stockCursor.getString(3)).isEqualTo("TAKEN")
+        assertThat(stockCursor.getString(4)).isEqualTo("occ-1")
+        stockCursor.close()
+
+        // Verify SUM(delta) is 29.0
+        val sumCursor = db.query("SELECT SUM(delta) FROM stock_event WHERE itemId = 'i-1'")
+        assertThat(sumCursor.moveToFirst()).isTrue()
+        assertThat(sumCursor.getDouble(0)).isEqualTo(29.0)
+        sumCursor.close()
+
+        db.close()
+    }
 }

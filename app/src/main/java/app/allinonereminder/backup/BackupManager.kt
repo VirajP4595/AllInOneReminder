@@ -67,6 +67,7 @@ class BackupManager @Inject constructor(
         val occurrences = db.occurrenceDao().getAllSync()
         val mealSessions = db.mealSessionDao().getAllSync()
         val changeLogs = db.changeLogDao().getAllSync()
+        val stockEvents = db.stockEventDao().getAllStockEvents()
 
         val rootJson = JSONObject().apply {
             put("version", VERSION)
@@ -79,6 +80,7 @@ class BackupManager @Inject constructor(
             put("occurrences", serializeOccurrences(occurrences))
             put("mealSessions", serializeMealSessions(mealSessions))
             put("changeLogs", serializeChangeLogs(changeLogs))
+            put("stockEvents", serializeStockEvents(stockEvents))
         }
 
         // 2. Build ZIP archive with backup.json and photos
@@ -182,9 +184,11 @@ class BackupManager @Inject constructor(
             val occurrences = deserializeOccurrences(json.optJSONArray("occurrences"))
             val mealSessions = deserializeMealSessions(json.optJSONArray("mealSessions"))
             val changeLogs = deserializeChangeLogs(json.optJSONArray("changeLogs"))
+            val stockEvents = deserializeStockEvents(json.optJSONArray("stockEvents"))
 
             // Atomically replace all database tables
             db.withTransaction {
+                db.stockEventDao().deleteAll()
                 db.changeLogDao().deleteAll()
                 db.occurrenceDao().deleteAll()
                 db.scheduleDao().deleteAll()
@@ -202,6 +206,7 @@ class BackupManager @Inject constructor(
                 db.occurrenceDao().upsertAll(occurrences)
                 db.mealSessionDao().insertAll(mealSessions)
                 db.changeLogDao().insertAll(changeLogs)
+                db.stockEventDao().insertAll(stockEvents)
             }
 
             // Only swap in photos AFTER DB transaction succeeds
@@ -385,6 +390,8 @@ class BackupManager @Inject constructor(
                 put("homeZoneId", item.homeZoneId)
                 put("startDate", item.startDate)
                 putOpt("maxPerDay", item.maxPerDay)
+                putOpt("unitsPerDose", item.unitsPerDose)
+                putOpt("refillThreshold", item.refillThreshold)
                 put("createdAt", item.createdAt)
                 put("updatedAt", item.updatedAt)
                 putOpt("deletedAt", item.deletedAt)
@@ -414,6 +421,8 @@ class BackupManager @Inject constructor(
                     homeZoneId = o.getString("homeZoneId"),
                     startDate = o.getString("startDate"),
                     maxPerDay = if (o.isNull("maxPerDay")) null else o.getInt("maxPerDay"),
+                    unitsPerDose = if (o.isNull("unitsPerDose")) 1.0 else o.optDouble("unitsPerDose", 1.0),
+                    refillThreshold = if (o.isNull("refillThreshold")) null else o.optDouble("refillThreshold"),
                     createdAt = o.getLong("createdAt"),
                     updatedAt = o.getLong("updatedAt"),
                     deletedAt = if (o.isNull("deletedAt")) null else o.getLong("deletedAt")
@@ -672,6 +681,38 @@ class BackupManager @Inject constructor(
                     newValue = if (o.isNull("newValue")) null else o.getString("newValue"),
                     changedAt = o.getLong("changedAt"),
                     deviceId = o.getString("deviceId")
+                )
+            )
+        }
+        return list
+    }
+
+    private fun serializeStockEvents(list: List<StockEventEntity>): JSONArray = JSONArray().apply {
+        list.forEach { event ->
+            put(JSONObject().apply {
+                put("id", event.id)
+                put("itemId", event.itemId)
+                put("delta", event.delta)
+                put("reason", event.reason.name)
+                putOpt("occurrenceId", event.occurrenceId)
+                put("createdAt", event.createdAt)
+            })
+        }
+    }
+
+    private fun deserializeStockEvents(array: JSONArray?): List<StockEventEntity> {
+        if (array == null) return emptyList()
+        val list = mutableListOf<StockEventEntity>()
+        for (i in 0 until array.length()) {
+            val o = array.getJSONObject(i)
+            list.add(
+                StockEventEntity(
+                    id = o.getString("id"),
+                    itemId = o.getString("itemId"),
+                    delta = o.getDouble("delta"),
+                    reason = StockEventReason.valueOf(o.getString("reason")),
+                    occurrenceId = if (o.isNull("occurrenceId")) null else o.getString("occurrenceId"),
+                    createdAt = o.getLong("createdAt")
                 )
             )
         }

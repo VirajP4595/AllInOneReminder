@@ -10,10 +10,14 @@ import app.allinonereminder.data.repository.OccurrenceRepository
 import app.allinonereminder.data.repository.ProfileRepository
 import app.allinonereminder.data.repository.ScheduleRepository
 import app.allinonereminder.data.repository.SettingsRepository
+import app.allinonereminder.data.repository.StockEventRepository
 import app.allinonereminder.model.*
+import app.allinonereminder.schedule.SchedulingEngine
+import app.allinonereminder.schedule.StockCalculator
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
+import java.time.Instant
 import javax.inject.Inject
 
 data class ItemDetailUiState(
@@ -24,6 +28,10 @@ data class ItemDetailUiState(
     val photos: List<ItemPhoto> = emptyList(),
     val recentOccurrences: List<Occurrence> = emptyList(),
     val changeLogs: List<ChangeLog> = emptyList(),
+    val currentStock: Double? = null,
+    val stockStatusText: String? = null,
+    val hasStockTracking: Boolean = false,
+    val isLowStock: Boolean = false,
     val isLoading: Boolean = true,
     val itemDeleted: Boolean = false
 )
@@ -35,6 +43,7 @@ class ItemDetailViewModel @Inject constructor(
     private val profileRepository: ProfileRepository,
     private val occurrenceRepository: OccurrenceRepository,
     private val changeLogRepository: ChangeLogRepository,
+    private val stockEventRepository: StockEventRepository? = null,
     private val settingsRepository: SettingsRepository,
     private val alarmCoordinator: AlarmCoordinator,
     savedStateHandle: SavedStateHandle
@@ -63,6 +72,22 @@ class ItemDetailViewModel @Inject constructor(
             // Change log entries
             val logs = changeLogRepository.getChangeLogs("item", itemId).firstOrNull() ?: emptyList()
 
+            // Stock
+            val hasStock = stockEventRepository?.hasStockEvents(itemId) ?: false
+            val stock = if (hasStock) stockEventRepository?.getCurrentStockSync(itemId) else null
+            val nowInstant = Instant.now()
+            val plannedCounts = StockCalculator.plan14DaysCounts(listOf(item), schedules, emptyList(), nowInstant)
+            val plannedSize = plannedCounts[item.id] ?: 0
+            val stockStatus = if (stock != null) {
+                StockCalculator.formatStockStatus(stock, item.unitsPerDose, plannedSize)
+            } else null
+            val daysOfSupply = if (stock != null) {
+                StockCalculator.calculateDaysOfSupply(stock, item.unitsPerDose, plannedSize)
+            } else null
+            val isLow = if (stock != null) {
+                StockCalculator.isLowStock(stock, item.refillThreshold, daysOfSupply)
+            } else false
+
             _uiState.update {
                 it.copy(
                     item = item,
@@ -72,9 +97,27 @@ class ItemDetailViewModel @Inject constructor(
                     photos = photos,
                     recentOccurrences = last30,
                     changeLogs = logs,
+                    currentStock = stock,
+                    stockStatusText = stockStatus,
+                    hasStockTracking = hasStock,
+                    isLowStock = isLow,
                     isLoading = false
                 )
             }
+        }
+    }
+
+    fun addRefill(amount: Double) {
+        viewModelScope.launch {
+            stockEventRepository?.addRefill(itemId, amount)
+            loadItemDetails()
+        }
+    }
+
+    fun adjustStock(newTotal: Double) {
+        viewModelScope.launch {
+            stockEventRepository?.adjustStock(itemId, newTotal)
+            loadItemDetails()
         }
     }
 

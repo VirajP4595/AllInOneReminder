@@ -10,6 +10,8 @@ import app.allinonereminder.data.local.dao.MealSessionDao
 import app.allinonereminder.data.local.dao.OccurrenceDao
 import app.allinonereminder.data.local.dao.ProfileDao
 import app.allinonereminder.data.local.dao.ScheduleDao
+import app.allinonereminder.data.local.dao.StockEventDao
+import app.allinonereminder.data.local.entity.StockEventEntity
 import app.allinonereminder.data.mapper.toDomain
 import app.allinonereminder.data.mapper.toEntity
 import app.allinonereminder.model.ChangeLog
@@ -19,8 +21,12 @@ import app.allinonereminder.model.MealAnchor
 import app.allinonereminder.model.MealSession
 import app.allinonereminder.model.MealType
 import app.allinonereminder.model.Occurrence
+import app.allinonereminder.model.OccurrenceStatus
 import app.allinonereminder.model.Profile
 import app.allinonereminder.model.Schedule
+import app.allinonereminder.model.StockEvent
+import app.allinonereminder.model.StockEventReason
+import app.allinonereminder.model.UuidV5
 import kotlinx.coroutines.flow.Flow
 import androidx.room.withTransaction
 import app.allinonereminder.data.local.AppDatabase
@@ -253,6 +259,9 @@ class ScheduleRepository(
     fun getActiveSchedules(itemId: String): Flow<List<Schedule>> =
         scheduleDao.getActiveByItemId(itemId).map { list -> list.map { it.toDomain() } }
 
+    suspend fun getActiveSchedulesSync(itemId: String): List<Schedule> =
+        scheduleDao.getActiveByItemIdSync(itemId).map { it.toDomain() }
+
     fun getAllActiveSchedules(): Flow<List<Schedule>> =
         scheduleDao.getAllActive().map { list -> list.map { it.toDomain() } }
 
@@ -311,7 +320,10 @@ class ScheduleRepository(
 }
 
 class OccurrenceRepository(
-    private val occurrenceDao: OccurrenceDao
+    private val occurrenceDao: OccurrenceDao,
+    private val stockEventDao: StockEventDao? = null,
+    private val itemDao: ItemDao? = null,
+    private val database: AppDatabase? = null
 ) {
     fun getOccurrencesBetween(from: Long, to: Long): Flow<List<Occurrence>> =
         occurrenceDao.getOccurrencesBetween(from, to).map { list -> list.map { it.toDomain() } }
@@ -345,9 +357,54 @@ class OccurrenceRepository(
     suspend fun getByIdsSync(ids: List<String>): List<Occurrence> =
         occurrenceDao.getByIdsSync(ids).map { it.toDomain() }
 
+    suspend fun markOccurrenceTaken(id: String, actedAt: Long = System.currentTimeMillis(), note: String? = null): Boolean {
+        val block: suspend () -> Boolean = {
+            val occ = occurrenceDao.getByIdSync(id)
+            if (occ != null) {
+                val updatedCount = occurrenceDao.markTakenTargeted(id, actedAt, actedAt, note)
+                if (updatedCount > 0 && stockEventDao != null) {
+                    val item = itemDao?.getByIdSync(occ.itemId)
+                    val units = item?.unitsPerDose ?: 1.0
+                    val stockEventId = UuidV5.generate(UuidV5.OCCURRENCE_NAMESPACE, "stock_$id")
+                    stockEventDao.insert(
+                        StockEventEntity(
+                            id = stockEventId,
+                            itemId = occ.itemId,
+                            delta = -units,
+                            reason = StockEventReason.TAKEN,
+                            occurrenceId = id,
+                            createdAt = actedAt
+                        )
+                    )
+                }
+                updatedCount > 0
+            } else {
+                false
+            }
+        }
+        return if (database != null) {
+            database.withTransaction { block() }
+        } else {
+            block()
+        }
+    }
+
     suspend fun markTakenTargeted(id: String, actedAt: Long, note: String? = null): Boolean {
-        val count = occurrenceDao.markTakenTargeted(id, actedAt, actedAt, note)
-        return count > 0
+        return markOccurrenceTaken(id, actedAt, note)
+    }
+
+    suspend fun recordAsNeededTaken(occurrence: Occurrence, actedAt: Long = System.currentTimeMillis()): Occurrence {
+        val pendingOcc = occurrence.copy(status = OccurrenceStatus.PENDING, actedAt = null)
+        val block: suspend () -> Occurrence = {
+            occurrenceDao.upsertAll(listOf(pendingOcc.toEntity()))
+            markOccurrenceTaken(occurrence.id, actedAt, occurrence.note)
+            pendingOcc.copy(status = OccurrenceStatus.TAKEN, actedAt = actedAt, updatedAt = actedAt)
+        }
+        return if (database != null) {
+            database.withTransaction { block() }
+        } else {
+            block()
+        }
     }
 
     suspend fun markSkippedTargeted(id: String, actedAt: Long, skipReason: String?, note: String? = null): Boolean {
@@ -434,4 +491,55 @@ class ChangeLogRepository(
     fun getChangeLogs(entityType: String, entityId: String): Flow<List<ChangeLog>> =
         changeLogDao.getByEntity(entityType, entityId).map { list -> list.map { it.toDomain() } }
 }
+
+class StockEventRepository(
+    private val stockEventDao: StockEventDao
+) {
+    fun getCurrentStock(itemId: String): Flow<Double> =
+        stockEventDao.getCurrentStockFlow(itemId)
+
+    fun getAllCurrentStocksFlow(): Flow<Map<String, Double>> =
+        stockEventDao.getAllCurrentStocksFlow().map { list -> list.associate { it.itemId to it.stock } }
+
+    suspend fun getCurrentStockSync(itemId: String): Double =
+        stockEventDao.getCurrentStock(itemId)
+
+    fun getEventsForItem(itemId: String): Flow<List<StockEvent>> =
+        stockEventDao.getEventsForItemFlow(itemId).map { list -> list.map { it.toDomain() } }
+
+    suspend fun getEventsForItemSync(itemId: String): List<StockEvent> =
+        stockEventDao.getEventsForItem(itemId).map { it.toDomain() }
+
+    suspend fun hasStockEvents(itemId: String): Boolean =
+        stockEventDao.countEventsForItem(itemId) > 0
+
+    suspend fun addRefill(itemId: String, amount: Double, createdAt: Long = System.currentTimeMillis()): StockEvent {
+        val event = StockEvent(
+            id = UUID.randomUUID().toString(),
+            itemId = itemId,
+            delta = amount,
+            reason = StockEventReason.REFILL,
+            occurrenceId = null,
+            createdAt = createdAt
+        )
+        stockEventDao.insert(event.toEntity())
+        return event
+    }
+
+    suspend fun adjustStock(itemId: String, targetAmount: Double, createdAt: Long = System.currentTimeMillis()): StockEvent {
+        val current = getCurrentStockSync(itemId)
+        val diff = targetAmount - current
+        val event = StockEvent(
+            id = UUID.randomUUID().toString(),
+            itemId = itemId,
+            delta = diff,
+            reason = StockEventReason.ADJUST,
+            occurrenceId = null,
+            createdAt = createdAt
+        )
+        stockEventDao.insert(event.toEntity())
+        return event
+    }
+}
+
 

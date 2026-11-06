@@ -128,6 +128,25 @@ Record pass/fail per device in the pull request description.
 9. Rotate through two taper schedules with different date ranges and doses.
    - **Expected Result:** Doses switch on the boundary date and the old step stops appearing.
 
+### Item 14: Stock tracking, refills, and low-stock alerts (#29)
+**Objective:** Verify stock ledger decrements only on dose taken, prevents duplicate decrements, calculates days-of-supply, and issues rate-limited refill alerts.
+1. Create or edit an item, set "Current stock" = 30, "Units / dose" = 2.0, "Refill alert at" = 10.
+   - **Expected Result:** Stock tracking is enabled for the item. The item detail screen shows "30 units remaining", "Units per dose: 2", and "Refill alert threshold: 10".
+2. View Today screen and Medicines list.
+   - **Expected Result:** Today card shows stock status (e.g., "30 left, about 15 days"). Medicines list shows badge once low stock is reached.
+3. Take a dose of 2 units (either from AlarmActivity or TodayScreen or NotificationActionReceiver).
+   - **Expected Result:** Stock decreases from 30 to 28. A single `stock_event` record is created with `reason = TAKEN` and `delta = -2.0`.
+4. Tap Take repeatedly or trigger a retry on the same occurrence.
+   - **Expected Result:** Stock remains 28; duplicate stock events are ignored via deterministic UUIDv5 primary key.
+5. In Item Detail, tap "Refilled +N" (e.g., +30) or custom amount.
+   - **Expected Result:** Stock increases to 58. An event with `reason = REFILL` and `delta = +30.0` is logged.
+6. In Item Detail, tap "Set Stock" and change value to 8.
+   - **Expected Result:** Current stock updates to 8. An event with `reason = ADJUST` and `delta = -50.0` is recorded.
+7. With stock at 8 (<= refill threshold 10), take a dose or trigger refill check.
+   - **Expected Result:** A notification appears on channel `refill_reminders` ("Refill Reminders"): "Low stock: <Item Name> has 6 units remaining (about 3 days)".
+8. Take another dose on the same day.
+   - **Expected Result:** Stock decrements to 4, but no duplicate refill notification is shown (rate-limited to once per item per calendar day).
+
 ---
 
 
@@ -145,3 +164,5 @@ Record pass/fail per device in the pull request description.
 | 10 | **False MISSED check** | Travel zone change or defer meal past original grace | `max(plannedAt, dueAt) + grace` used; does not falsely mark MISSED. |
 | 11 | **Backup/restore** | Export `.airbackup`, clear app data, restore | Full dataset and photos restored; Zip Slip rejected; unreferenced photos pruned. |
 | 12 | **R8 / Minified APK** | Install `app-0.1.1-debugsigned.apk` | App launches, opens SQLCipher DB, and runs without Proguard/R8 reflection crashes. |
+| 13 | **Schedules & Taper** | Configure specific days, interval, monthly, PRN, taper | Doses appear at correct times, PRN logs without plan, taper doses apply. |
+| 14 | **Stock ledger & Refills** | Log doses, refill, adjust stock, verify low stock notification | Append-only ledger decrements accurately; refill alert fires once per day. |

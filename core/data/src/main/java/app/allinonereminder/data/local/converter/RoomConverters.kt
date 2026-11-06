@@ -9,6 +9,7 @@ import app.allinonereminder.model.MealType
 import app.allinonereminder.model.OccurrenceStatus
 import app.allinonereminder.model.RecurrenceType
 import app.allinonereminder.model.ScheduleAnchorType
+import app.allinonereminder.model.StockEventReason
 import app.allinonereminder.model.TimePolicy
 
 class RoomConverters {
@@ -65,5 +66,11 @@ class RoomConverters {
 
     @TypeConverter
     fun toOccurrenceStatus(value: String?): OccurrenceStatus? = value?.let { OccurrenceStatus.valueOf(it) }
+
+    @TypeConverter
+    fun fromStockEventReason(value: StockEventReason?): String? = value?.name
+
+    @TypeConverter
+    fun toStockEventReason(value: String?): StockEventReason? = value?.let { StockEventReason.valueOf(it) }
 }
 

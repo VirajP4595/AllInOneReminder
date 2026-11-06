@@ -10,6 +10,7 @@ import app.allinonereminder.data.repository.ItemRepository
 import app.allinonereminder.data.repository.ProfileRepository
 import app.allinonereminder.data.repository.ScheduleRepository
 import app.allinonereminder.data.repository.SettingsRepository
+import app.allinonereminder.data.repository.StockEventRepository
 import app.allinonereminder.model.*
 import app.allinonereminder.ui.util.PhotoStorageHelper
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -63,6 +64,9 @@ data class ItemEditorUiState(
     val reRingMinutes: Int = 5,
     val minGapMinutes: Int = 240,
     val maxPerDay: Int? = null,
+    val currentStock: String = "",
+    val unitsPerDose: String = "1.0",
+    val refillThreshold: String = "",
     val schedules: List<ScheduleDraft> = listOf(ScheduleDraft()),
     val photos: List<ItemPhoto> = emptyList(),
     val isSaving: Boolean = false,
@@ -74,6 +78,7 @@ class ItemEditorViewModel @Inject constructor(
     private val itemRepository: ItemRepository,
     private val scheduleRepository: ScheduleRepository,
     private val profileRepository: ProfileRepository,
+    private val stockEventRepository: StockEventRepository? = null,
     private val settingsRepository: SettingsRepository,
     private val alarmCoordinator: AlarmCoordinator,
     savedStateHandle: SavedStateHandle
@@ -95,6 +100,11 @@ class ItemEditorViewModel @Inject constructor(
                 val photos = itemRepository.getPhotosSync(editItemId)
 
                 if (item != null) {
+                    val stock = if (stockEventRepository?.hasStockEvents(item.id) == true) stockEventRepository.getCurrentStockSync(item.id) else null
+                    val currentStockStr = stock?.let { if (it % 1.0 == 0.0) it.toInt().toString() else it.toString() } ?: ""
+                    val unitsStr = item.unitsPerDose?.let { if (it % 1.0 == 0.0) it.toInt().toString() else it.toString() } ?: "1.0"
+                    val thresholdStr = item.refillThreshold?.let { if (it % 1.0 == 0.0) it.toInt().toString() else it.toString() } ?: ""
+
                     _uiState.update {
                         it.copy(
                             isEditMode = true,
@@ -117,6 +127,9 @@ class ItemEditorViewModel @Inject constructor(
                             reRingMinutes = item.reRingMinutes,
                             minGapMinutes = item.minGapMinutes ?: 240,
                             maxPerDay = item.maxPerDay,
+                            currentStock = currentStockStr,
+                            unitsPerDose = unitsStr,
+                            refillThreshold = thresholdStr,
                             schedules = scheds.map { s ->
                                 ScheduleDraft(
                                     id = s.id,
@@ -247,6 +260,8 @@ class ItemEditorViewModel @Inject constructor(
                 reRingMinutes = state.reRingMinutes,
                 minGapMinutes = state.minGapMinutes,
                 maxPerDay = state.maxPerDay,
+                unitsPerDose = state.unitsPerDose.toDoubleOrNull() ?: 1.0,
+                refillThreshold = state.refillThreshold.toDoubleOrNull(),
                 createdAt = now,
                 updatedAt = now
             )
@@ -328,10 +343,30 @@ class ItemEditorViewModel @Inject constructor(
                 }
             }
 
+            // Adjust stock if current stock was entered
+            if (state.currentStock.isNotBlank()) {
+                val enteredStock = state.currentStock.toDoubleOrNull()
+                if (enteredStock != null) {
+                    stockEventRepository.adjustStock(item.id, enteredStock, now)
+                }
+            }
+
             // Reschedule alarms immediately
             alarmCoordinator.reschedule("item_editor_saved")
 
             _uiState.update { it.copy(isSaving = false, saveCompleted = true) }
         }
+    }
+
+    fun updateCurrentStock(stock: String) {
+        _uiState.update { it.copy(currentStock = stock) }
+    }
+
+    fun updateUnitsPerDose(units: String) {
+        _uiState.update { it.copy(unitsPerDose = units) }
+    }
+
+    fun updateRefillThreshold(threshold: String) {
+        _uiState.update { it.copy(refillThreshold = threshold) }
     }
 }

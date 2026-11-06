@@ -5,16 +5,22 @@ import androidx.lifecycle.viewModelScope
 import app.allinonereminder.data.repository.ItemRepository
 import app.allinonereminder.data.repository.ProfileRepository
 import app.allinonereminder.data.repository.ScheduleRepository
+import app.allinonereminder.data.repository.StockEventRepository
 import app.allinonereminder.model.*
+import app.allinonereminder.schedule.SchedulingEngine
+import app.allinonereminder.schedule.StockCalculator
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.*
+import java.time.Instant
 import javax.inject.Inject
 
 data class ItemWithSchedulesUiModel(
     val item: Item,
     val profile: Profile?,
     val schedules: List<Schedule>,
-    val scheduleSummaryText: String
+    val scheduleSummaryText: String,
+    val isLowStock: Boolean = false,
+    val stockStatusText: String? = null
 )
 
 data class ItemsUiState(
@@ -29,7 +35,8 @@ data class ItemsUiState(
 class ItemsViewModel @Inject constructor(
     private val profileRepository: ProfileRepository,
     private val itemRepository: ItemRepository,
-    private val scheduleRepository: ScheduleRepository
+    private val scheduleRepository: ScheduleRepository,
+    private val stockEventRepository: StockEventRepository? = null
 ) : ViewModel() {
 
     private val _selectedProfileId = MutableStateFlow<String?>(null)
@@ -39,9 +46,26 @@ class ItemsViewModel @Inject constructor(
         profileRepository.getActiveProfiles(),
         _selectedProfileId,
         _selectedTypeFilter,
-        itemRepository.getActiveItems()
-    ) { profiles, selectedProfileId, selectedTypeFilter, allItems ->
+        itemRepository.getActiveItems(),
+        scheduleRepository.getAllActiveSchedules(),
+        stockEventRepository?.getAllCurrentStocksFlow() ?: flowOf(emptyMap())
+    ) { args ->
+        @Suppress("UNCHECKED_CAST")
+        val profiles = args[0] as List<Profile>
+        val selectedProfileId = args[1] as String?
+        val selectedTypeFilter = args[2] as ItemType?
+        @Suppress("UNCHECKED_CAST")
+        val allItems = args[3] as List<Item>
+        @Suppress("UNCHECKED_CAST")
+        val allSchedules = args[4] as List<Schedule>
+        @Suppress("UNCHECKED_CAST")
+        val stockMap = args[5] as Map<String, Double>
+
         val profileMap = profiles.associateBy { it.id }
+        val schedulesByItem = allSchedules.groupBy { it.itemId }
+
+        val nowInstant = Instant.now()
+        val plannedCountsByItem = StockCalculator.plan14DaysCounts(allItems, allSchedules, emptyList(), nowInstant)
 
         val filteredItems = allItems
             .filter { item ->
@@ -49,13 +73,27 @@ class ItemsViewModel @Inject constructor(
                 (selectedTypeFilter == null || item.type == selectedTypeFilter)
             }
             .map { item ->
-                val scheds = scheduleRepository.getActiveSchedules(item.id).firstOrNull() ?: emptyList()
+                val scheds = schedulesByItem[item.id] ?: emptyList()
                 val summary = formatSchedulesSummary(scheds, item)
+                val currentStock = stockMap[item.id]
+                val plannedCount = plannedCountsByItem[item.id] ?: 0
+                val daysOfSupply = if (currentStock != null) {
+                    StockCalculator.calculateDaysOfSupply(currentStock, item.unitsPerDose, plannedCount)
+                } else null
+                val isLow = if (currentStock != null) {
+                    StockCalculator.isLowStock(currentStock, item.refillThreshold, daysOfSupply)
+                } else false
+                val stockStatus = if (currentStock != null) {
+                    StockCalculator.formatStockStatus(currentStock, item.unitsPerDose, plannedCount)
+                } else null
+
                 ItemWithSchedulesUiModel(
                     item = item,
                     profile = profileMap[item.profileId],
                     schedules = scheds,
-                    scheduleSummaryText = summary
+                    scheduleSummaryText = summary,
+                    isLowStock = isLow,
+                    stockStatusText = stockStatus
                 )
             }
 
