@@ -39,6 +39,69 @@ class StockCalculatorTest {
     }
 
     @Test
+    fun formatStockStatus_withDecimalStock() {
+        val status = StockCalculator.formatStockStatus(
+            currentStock = 12.5,
+            unitsPerDose = 0.5,
+            plannedOccurrencesCountIn14Days = 14
+        )
+        assertThat(status).isEqualTo("12.5 left, about 25 days")
+    }
+
+    @Test
+    fun calculateDaysOfSupply_invalidUnits_defaultsToOne() {
+        val days = StockCalculator.calculateDaysOfSupply(
+            currentStock = 14.0,
+            unitsPerDose = -1.0,
+            plannedOccurrencesCountIn14Days = 14
+        )
+        assertThat(days).isNotNull()
+        assertThat(days!!).isWithin(0.001).of(14.0)
+    }
+
+    @Test
+    fun plan14DaysCounts_plansCorrectOccurrences() {
+        val now = java.time.Instant.parse("2026-01-01T00:00:00Z")
+        val zone = java.time.ZoneId.of("UTC")
+        val item = app.allinonereminder.model.Item(
+            id = "item-1",
+            profileId = "prof-1",
+            type = app.allinonereminder.model.ItemType.MEDICINE,
+            name = "Aspirin",
+            dosageAmount = "100",
+            dosageUnit = "mg",
+            criticality = app.allinonereminder.model.Criticality.NORMAL,
+            graceMinutes = 60,
+            reRingMinutes = 5,
+            timePolicy = app.allinonereminder.model.TimePolicy.LOCAL_WALL_CLOCK,
+            homeZoneId = "UTC",
+            startDate = "2026-01-01",
+            active = true,
+            createdAt = 0L,
+            updatedAt = 0L
+        )
+        val schedule = app.allinonereminder.model.Schedule(
+            id = "sched-1",
+            itemId = "item-1",
+            anchorType = app.allinonereminder.model.ScheduleAnchorType.FIXED,
+            minuteOfDay = 8 * 60,
+            recurrence = app.allinonereminder.model.RecurrenceType.DAILY,
+            anchorDate = "2026-01-01",
+            createdAt = 0L,
+            updatedAt = 0L
+        )
+
+        val counts = StockCalculator.plan14DaysCounts(
+            items = listOf(item),
+            schedules = listOf(schedule),
+            now = now,
+            zone = zone
+        )
+
+        assertThat(counts["item-1"]).isEqualTo(14)
+    }
+
+    @Test
     fun calculateDaysOfSupply_noPlannedDoses_returnsNull() {
         val days = StockCalculator.calculateDaysOfSupply(
             currentStock = 10.0,
