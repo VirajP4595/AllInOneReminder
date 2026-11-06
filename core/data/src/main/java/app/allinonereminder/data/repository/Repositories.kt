@@ -362,7 +362,7 @@ class OccurrenceRepository(
             val occ = occurrenceDao.getByIdSync(id)
             if (occ != null) {
                 val updatedCount = occurrenceDao.markTakenTargeted(id, actedAt, actedAt, note)
-                if (updatedCount > 0 && stockEventDao != null) {
+                if (updatedCount > 0 && stockEventDao != null && stockEventDao.countEventsForItem(occ.itemId) > 0) {
                     val item = itemDao?.getByIdSync(occ.itemId)
                     val units = item?.unitsPerDose ?: 1.0
                     val stockEventId = UuidV5.generate(UuidV5.OCCURRENCE_NAMESPACE, "stock_$id")
@@ -404,7 +404,8 @@ class OccurrenceRepository(
         )
         val block: suspend () -> Occurrence = {
             occurrenceDao.upsertAll(listOf(takenOcc.toEntity()))
-            if (stockEventDao != null) {
+            // Only items whose stock is already being tracked (a refill/adjust exists) get a decrement.
+            if (stockEventDao != null && stockEventDao.countEventsForItem(occurrence.itemId) > 0) {
                 val item = itemDao?.getByIdSync(occurrence.itemId)
                 val units = item?.unitsPerDose ?: 1.0
                 val stockEventId = UuidV5.generate(UuidV5.OCCURRENCE_NAMESPACE, "stock_${occurrence.id}")

@@ -101,6 +101,41 @@ class StockTrackingTest {
     }
 
     @Test
+    fun markOccurrenceTaken_onUntrackedItem_writesNoStockEvent() = runBlocking {
+        val now = 1700000000000L
+        db.profileDao().insert(ProfileEntity(id = "prof-1", name = "Mom", colorArgb = 0xFF00FF, createdAt = now, updatedAt = now))
+        db.itemDao().insert(
+            ItemEntity(
+                id = "item-1", profileId = "prof-1", type = ItemType.MEDICINE, name = "Metformin",
+                dosageAmount = "1000", dosageUnit = "mg", criticality = Criticality.NORMAL,
+                graceMinutes = 60, reRingMinutes = 5, timePolicy = TimePolicy.LOCAL_WALL_CLOCK,
+                homeZoneId = "UTC", startDate = "2026-01-01", active = true, createdAt = now, updatedAt = now
+            )
+        )
+        db.scheduleDao().insert(
+            ScheduleEntity(
+                id = "sched-1", itemId = "item-1", anchorType = ScheduleAnchorType.FIXED,
+                recurrence = RecurrenceType.DAILY, anchorDate = "2026-01-01", createdAt = now, updatedAt = now
+            )
+        )
+        db.occurrenceDao().upsertAll(
+            listOf(
+                OccurrenceEntity(
+                    id = "occ-1", itemId = "item-1", scheduleId = "sched-1", profileId = "prof-1",
+                    plannedAt = now, dueAt = now, remindAt = now, status = OccurrenceStatus.PENDING,
+                    ringCount = 0, actedAt = null, skipReason = null, note = null, deviceId = "dev-1", updatedAt = now
+                )
+            )
+        )
+
+        assertThat(occurrenceRepo.markOccurrenceTaken("occ-1", actedAt = now + 1000)).isTrue()
+
+        // No refill/adjust ever happened, so the item must stay untracked.
+        assertThat(db.stockEventDao().getAllStockEvents()).isEmpty()
+        assertThat(stockRepo.hasStockEvents("item-1")).isFalse()
+    }
+
+    @Test
     fun adjustStock_setsTotalToTarget_usingDifferenceDelta() = runBlocking {
         val now = 1700000000000L
         db.profileDao().insert(ProfileEntity(id = "prof-1", name = "Mom", colorArgb = 0xFF00FF, createdAt = now, updatedAt = now))
