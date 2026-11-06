@@ -4,6 +4,9 @@ import android.content.Context
 import androidx.room.Room
 import app.allinonereminder.data.local.AppDatabase
 import app.allinonereminder.data.local.ChangeLogWriter
+import app.allinonereminder.data.local.dao.AppointmentAttachmentDao
+import app.allinonereminder.data.local.dao.AppointmentDao
+import app.allinonereminder.data.local.dao.AppointmentPrepDao
 import app.allinonereminder.data.local.dao.ChangeLogDao
 import app.allinonereminder.data.local.dao.ItemDao
 import app.allinonereminder.data.local.dao.ItemPhotoDao
@@ -13,6 +16,7 @@ import app.allinonereminder.data.local.dao.OccurrenceDao
 import app.allinonereminder.data.local.dao.ProfileDao
 import app.allinonereminder.data.local.dao.ScheduleDao
 import app.allinonereminder.data.local.dao.StockEventDao
+import app.allinonereminder.data.repository.AppointmentRepository
 import app.allinonereminder.data.repository.ChangeLogRepository
 import app.allinonereminder.data.repository.ItemRepository
 import app.allinonereminder.data.repository.MealAnchorRepository
@@ -66,6 +70,7 @@ object DataModule {
             .addMigrations(app.allinonereminder.data.local.MIGRATION_1_2)
             .addMigrations(app.allinonereminder.data.local.MIGRATION_2_3)
             .addMigrations(app.allinonereminder.data.local.MIGRATION_3_4)
+            .addMigrations(app.allinonereminder.data.local.MIGRATION_4_5)
         if (factory != null) {
             builder.openHelperFactory(factory)
         }
@@ -98,6 +103,15 @@ object DataModule {
 
     @Provides
     fun provideStockEventDao(db: AppDatabase): StockEventDao = db.stockEventDao()
+
+    @Provides
+    fun provideAppointmentDao(db: AppDatabase): AppointmentDao = db.appointmentDao()
+
+    @Provides
+    fun provideAppointmentPrepDao(db: AppDatabase): AppointmentPrepDao = db.appointmentPrepDao()
+
+    @Provides
+    fun provideAppointmentAttachmentDao(db: AppDatabase): AppointmentAttachmentDao = db.appointmentAttachmentDao()
 
     @Provides
     @Singleton
@@ -175,5 +189,25 @@ object DataModule {
     fun provideSettingsRepository(
         @ApplicationContext context: Context
     ): SettingsRepository = SettingsRepository(context.dataStore)
+
+    @Provides
+    @Singleton
+    fun provideAppointmentRepository(
+        appointmentDao: AppointmentDao,
+        appointmentPrepDao: AppointmentPrepDao,
+        appointmentAttachmentDao: AppointmentAttachmentDao,
+        itemDao: ItemDao,
+        scheduleDao: ScheduleDao,
+        database: AppDatabase,
+        changeLogWriter: ChangeLogWriter
+    ): AppointmentRepository = AppointmentRepository(
+        appointmentDao = appointmentDao,
+        appointmentPrepDao = appointmentPrepDao,
+        appointmentAttachmentDao = appointmentAttachmentDao,
+        itemDao = itemDao,
+        scheduleDao = scheduleDao,
+        database = database,
+        changeLogWriter = changeLogWriter
+    )
 }
 

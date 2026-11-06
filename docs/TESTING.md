@@ -147,6 +147,32 @@ Record pass/fail per device in the pull request description.
 8. Take another dose on the same day.
    - **Expected Result:** Stock decrements to 4, but no duplicate refill notification is shown (rate-limited to once per item per calendar day).
 
+### Item 15: Appointments, prep reminders, and attachments (#33)
+**Objective:** Verify appointments schedule visit reminders and preparation alarms, attachments open safely via FileProvider, and appointment alarms display "Got it" / "Snooze" without "Skip".
+1. Open the "Visits" tab and tap the "+ Add" FAB.
+   - **Expected Result:** Appointment editor opens with fields for Doctor, Place, Date & Time, Reminders, Preps, and Attachments.
+2. Fill Doctor ("Dr. Sarah Jenkins"), Place ("Heart Care, Suite 400"), set date/time to tomorrow at 10:30 AM.
+   - Set Reminders: "2 hours before", "30 min before".
+   - Tap quick-add prep "+ Fast from 22:00 night before (10h)".
+   - Tap "Attach File" and select a sample PDF or image.
+   - Tap "Save Appointment".
+   - **Expected Result:** Appointment is saved. Hidden appointment item and `ONCE` schedules for the reminders and preps are materialized and scheduled with AlarmCoordinator.
+3. Check the "Visits" tab:
+   - **Expected Result:** Dr. Jenkins appears under the "Upcoming" tab with date, time, location, preps, and attachment badge.
+4. Tap the appointment card:
+   - **Expected Result:** Appointment Detail opens. Shows doctor, place, time, preps checklist, attachments list, and doctor notes.
+5. Tap an attached document in Detail:
+   - **Expected Result:** Opens in external viewer (PDF reader / Image viewer) securely via `FileProvider` (`content://app.allinonereminder.fileprovider/attachments/...`).
+6. Advance system clock or trigger the visit reminder alarm:
+   - **Expected Result:** Full-screen `AlarmActivity` displays "Dr. Sarah Jenkins in 2 hours, at Heart Care, Suite 400".
+   - Action buttons show **"Got it"** and **"Snooze"** (no "Skip" button).
+7. Tap "Got it" on the alarm:
+   - **Expected Result:** Occurrence marked done.
+8. In Appointment Detail, tap "Mark as Done" and enter prescription notes:
+   - **Expected Result:** Appointment moves from "Upcoming" to "Past". Notes and prescription notes are saved and visible in Past visits.
+9. Export backup and inspect JSON/ZIP:
+   - **Expected Result:** Backup zip contains `attachments/` folder with stored files, and JSON includes `appointments`, `appointmentPreps`, and `appointmentAttachments`.
+
 ---
 
 
@@ -166,3 +192,4 @@ Record pass/fail per device in the pull request description.
 | 12 | **R8 / Minified APK** | Install `app-0.1.1-debugsigned.apk` | App launches, opens SQLCipher DB, and runs without Proguard/R8 reflection crashes. |
 | 13 | **Schedules & Taper** | Configure specific days, interval, monthly, PRN, taper | Doses appear at correct times, PRN logs without plan, taper doses apply. |
 | 14 | **Stock ledger & Refills** | Log doses, refill, adjust stock, verify low stock notification | Append-only ledger decrements accurately; refill alert fires once per day. |
+| 15 | **Appointments & Preps** | Create visit with preps and attachment; verify alarm text and FileProvider | Displays "Got it"/"Snooze", prep alarms fire, attachment opens in viewer, backup saves files. |

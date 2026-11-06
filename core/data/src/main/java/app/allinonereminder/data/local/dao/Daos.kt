@@ -6,6 +6,9 @@ import androidx.room.OnConflictStrategy
 import androidx.room.Query
 import androidx.room.Update
 import androidx.room.Upsert
+import app.allinonereminder.data.local.entity.AppointmentAttachmentEntity
+import app.allinonereminder.data.local.entity.AppointmentEntity
+import app.allinonereminder.data.local.entity.AppointmentPrepEntity
 import app.allinonereminder.data.local.entity.ChangeLogEntity
 import app.allinonereminder.data.local.entity.ItemEntity
 import app.allinonereminder.data.local.entity.ItemPhotoEntity
@@ -113,6 +116,12 @@ interface ItemDao {
 
     @Query("UPDATE item SET deletedAt = :deletedAt, updatedAt = :deletedAt WHERE profileId = :profileId AND deletedAt IS NULL")
     suspend fun softDeleteByProfile(profileId: String, deletedAt: Long)
+
+    @Query("SELECT * FROM item WHERE appointmentId = :appointmentId AND deletedAt IS NULL LIMIT 1")
+    suspend fun getByAppointmentIdSync(appointmentId: String): ItemEntity?
+
+    @Query("UPDATE item SET deletedAt = :deletedAt, updatedAt = :deletedAt WHERE appointmentId = :appointmentId AND deletedAt IS NULL")
+    suspend fun softDeleteByAppointmentId(appointmentId: String, deletedAt: Long)
 }
 
 @Dao
@@ -176,6 +185,9 @@ interface ScheduleDao {
 
     @Query("UPDATE schedule SET deletedAt = :deletedAt, updatedAt = :deletedAt WHERE id = :id")
     suspend fun softDelete(id: String, deletedAt: Long)
+
+    @Query("UPDATE schedule SET deletedAt = :deletedAt, updatedAt = :deletedAt WHERE itemId = :itemId AND deletedAt IS NULL")
+    suspend fun softDeleteByItemId(itemId: String, deletedAt: Long)
 
     @Query("SELECT * FROM schedule WHERE itemId IN (SELECT id FROM item WHERE profileId = :profileId) AND deletedAt IS NULL")
     suspend fun getActiveByProfileSync(profileId: String): List<ScheduleEntity>
@@ -335,4 +347,98 @@ interface StockEventDao {
     @Query("DELETE FROM stock_event")
     suspend fun deleteAll()
 }
+
+@Dao
+interface AppointmentDao {
+    @Query("SELECT * FROM appointment WHERE deletedAt IS NULL ORDER BY startAt ASC")
+    fun getAllActive(): Flow<List<AppointmentEntity>>
+
+    @Query("SELECT * FROM appointment WHERE deletedAt IS NULL ORDER BY startAt ASC")
+    suspend fun getAllActiveSync(): List<AppointmentEntity>
+
+    @Query("SELECT * FROM appointment WHERE id = :id AND deletedAt IS NULL")
+    fun getById(id: String): Flow<AppointmentEntity?>
+
+    @Query("SELECT * FROM appointment WHERE id = :id")
+    suspend fun getByIdSync(id: String): AppointmentEntity?
+
+    @Query("SELECT * FROM appointment WHERE profileId = :profileId AND deletedAt IS NULL ORDER BY startAt ASC")
+    fun getActiveByProfile(profileId: String): Flow<List<AppointmentEntity>>
+
+    @Query("SELECT * FROM appointment")
+    suspend fun getAllSync(): List<AppointmentEntity>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insert(appointment: AppointmentEntity)
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertAll(appointments: List<AppointmentEntity>)
+
+    @Update
+    suspend fun update(appointment: AppointmentEntity)
+
+    @Query("UPDATE appointment SET deletedAt = :deletedAt, updatedAt = :deletedAt WHERE id = :id")
+    suspend fun softDelete(id: String, deletedAt: Long)
+
+    @Query("UPDATE appointment SET status = :status, updatedAt = :updatedAt WHERE id = :id")
+    suspend fun updateStatus(id: String, status: String, updatedAt: Long)
+
+    @Query("DELETE FROM appointment WHERE id = :id")
+    suspend fun delete(id: String)
+
+    @Query("DELETE FROM appointment")
+    suspend fun deleteAll()
+}
+
+@Dao
+interface AppointmentPrepDao {
+    @Query("SELECT * FROM appointment_prep WHERE appointmentId = :appointmentId ORDER BY minutesBefore DESC")
+    fun getByAppointmentIdFlow(appointmentId: String): Flow<List<AppointmentPrepEntity>>
+
+    @Query("SELECT * FROM appointment_prep WHERE appointmentId = :appointmentId ORDER BY minutesBefore DESC")
+    suspend fun getByAppointmentIdSync(appointmentId: String): List<AppointmentPrepEntity>
+
+    @Query("SELECT * FROM appointment_prep")
+    suspend fun getAllSync(): List<AppointmentPrepEntity>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insert(prep: AppointmentPrepEntity)
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertAll(preps: List<AppointmentPrepEntity>)
+
+    @Query("DELETE FROM appointment_prep WHERE appointmentId = :appointmentId")
+    suspend fun deleteByAppointmentId(appointmentId: String)
+
+    @Query("DELETE FROM appointment_prep")
+    suspend fun deleteAll()
+}
+
+@Dao
+interface AppointmentAttachmentDao {
+    @Query("SELECT * FROM appointment_attachment WHERE appointmentId = :appointmentId ORDER BY createdAt ASC")
+    fun getByAppointmentIdFlow(appointmentId: String): Flow<List<AppointmentAttachmentEntity>>
+
+    @Query("SELECT * FROM appointment_attachment WHERE appointmentId = :appointmentId ORDER BY createdAt ASC")
+    suspend fun getByAppointmentIdSync(appointmentId: String): List<AppointmentAttachmentEntity>
+
+    @Query("SELECT * FROM appointment_attachment")
+    suspend fun getAllSync(): List<AppointmentAttachmentEntity>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insert(attachment: AppointmentAttachmentEntity)
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertAll(attachments: List<AppointmentAttachmentEntity>)
+
+    @Query("DELETE FROM appointment_attachment WHERE id = :id")
+    suspend fun deleteById(id: String)
+
+    @Query("DELETE FROM appointment_attachment WHERE appointmentId = :appointmentId")
+    suspend fun deleteByAppointmentId(appointmentId: String)
+
+    @Query("DELETE FROM appointment_attachment")
+    suspend fun deleteAll()
+}
+
 

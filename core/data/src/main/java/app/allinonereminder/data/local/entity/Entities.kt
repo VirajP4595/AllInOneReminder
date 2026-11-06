@@ -5,6 +5,7 @@ import androidx.room.Entity
 import androidx.room.ForeignKey
 import androidx.room.Index
 import androidx.room.PrimaryKey
+import app.allinonereminder.model.AppointmentStatus
 import app.allinonereminder.model.Criticality
 import app.allinonereminder.model.DayType
 import app.allinonereminder.model.ItemType
@@ -65,7 +66,8 @@ data class MealAnchorEntity(
         Index("profileId"),
         Index("type"),
         Index("active"),
-        Index("deletedAt")
+        Index("deletedAt"),
+        Index("appointmentId")
     ],
     foreignKeys = [
         ForeignKey(
@@ -97,6 +99,7 @@ data class ItemEntity(
     val maxPerDay: Int? = null,
     val unitsPerDose: Double? = 1.0,
     val refillThreshold: Double? = null,
+    val appointmentId: String? = null,
     val active: Boolean = true,
     val createdAt: Long,
     val updatedAt: Long,
@@ -260,5 +263,83 @@ data class StockEventEntity(
     val occurrenceId: String? = null,
     val createdAt: Long
 )
+
+@Entity(
+    tableName = "appointment",
+    indices = [
+        Index("profileId"),
+        Index("status"),
+        Index("startAt"),
+        Index("deletedAt")
+    ],
+    foreignKeys = [
+        ForeignKey(
+            entity = ProfileEntity::class,
+            parentColumns = ["id"],
+            childColumns = ["profileId"],
+            onDelete = ForeignKey.CASCADE
+        )
+    ]
+)
+data class AppointmentEntity(
+    @PrimaryKey val id: String,
+    val profileId: String,
+    val doctor: String,
+    val place: String? = null,
+    val startAt: Long,
+    val purpose: String? = null,
+    val notes: String? = null,
+    val prescriptionNotes: String? = null,
+    val status: AppointmentStatus = AppointmentStatus.UPCOMING,
+    val remindMinutesBefore: String = "120,30",
+    val createdAt: Long,
+    val updatedAt: Long,
+    val deletedAt: Long? = null
+)
+
+@Entity(
+    tableName = "appointment_prep",
+    indices = [
+        Index("appointmentId")
+    ],
+    foreignKeys = [
+        ForeignKey(
+            entity = AppointmentEntity::class,
+            parentColumns = ["id"],
+            childColumns = ["appointmentId"],
+            onDelete = ForeignKey.CASCADE
+        )
+    ]
+)
+data class AppointmentPrepEntity(
+    @PrimaryKey val id: String,
+    val appointmentId: String,
+    val text: String,
+    val minutesBefore: Int,
+    val createdAt: Long
+)
+
+@Entity(
+    tableName = "appointment_attachment",
+    indices = [
+        Index("appointmentId")
+    ],
+    foreignKeys = [
+        ForeignKey(
+            entity = AppointmentEntity::class,
+            parentColumns = ["id"],
+            childColumns = ["appointmentId"],
+            onDelete = ForeignKey.CASCADE
+        )
+    ]
+)
+data class AppointmentAttachmentEntity(
+    @PrimaryKey val id: String,
+    val appointmentId: String,
+    val filePath: String,
+    val mimeType: String,
+    val createdAt: Long
+)
+
 
 

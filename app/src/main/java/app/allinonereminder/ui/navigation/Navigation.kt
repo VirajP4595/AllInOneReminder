@@ -28,6 +28,7 @@ import app.allinonereminder.data.repository.SettingsRepository
 import app.allinonereminder.model.DayType
 import app.allinonereminder.model.MealAnchor
 import app.allinonereminder.model.MealType
+import app.allinonereminder.ui.appointments.*
 import app.allinonereminder.ui.items.*
 import app.allinonereminder.ui.onboarding.OnboardingScreen
 import app.allinonereminder.ui.permissions.PermissionChecker
@@ -46,17 +47,22 @@ sealed class Screen(val route: String, val title: String, val icon: ImageVector?
     data object Onboarding : Screen("onboarding", "Onboarding")
     data object Today : Screen("today", "Today", Icons.Default.CalendarToday)
     data object Items : Screen("items", "Items", Icons.Default.MedicalServices)
+    data object Appointments : Screen("appointments", "Visits", Icons.Default.Event)
     data object Profiles : Screen("profiles", "Profiles", Icons.Default.People)
     data object Settings : Screen("settings", "Settings", Icons.Default.Settings)
     data object ItemAdd : Screen("item/add", "Add Item")
     data object ItemEdit : Screen("item/edit/{itemId}", "Edit Item")
     data object ItemDetail : Screen("item/detail/{itemId}", "Item Detail")
+    data object AppointmentAdd : Screen("appointment/add", "Add Appointment")
+    data object AppointmentEdit : Screen("appointment/edit/{appointmentId}", "Edit Appointment")
+    data object AppointmentDetail : Screen("appointment/detail/{appointmentId}", "Appointment Detail")
     data object Permissions : Screen("permissions", "Permissions")
 }
 
 val BOTTOM_BAR_SCREENS = listOf(
     Screen.Today,
     Screen.Items,
+    Screen.Appointments,
     Screen.Profiles,
     Screen.Settings
 )
@@ -193,7 +199,12 @@ fun MainAppNavigation(
                     onStartMeal = viewModel::onStartMealNow,
                     onEndMeal = viewModel::onEndMealNow,
                     onOccurrenceClick = { occ ->
-                        navController.navigate("item/detail/${occ.item.id}")
+                        val apptId = occ.item.appointmentId
+                        if (apptId != null) {
+                            navController.navigate("appointment/detail/$apptId")
+                        } else {
+                            navController.navigate("item/detail/${occ.item.id}")
+                        }
                     },
                     onRetryReschedule = viewModel::retryReschedule
                 )
@@ -295,6 +306,50 @@ fun MainAppNavigation(
                     onRefillClick = viewModel::addRefill,
                     onAdjustClick = viewModel::adjustStock,
                     onNavigateBack = { navController.popBackStack() }
+                )
+            }
+
+            // Appointments List
+            composable(Screen.Appointments.route) {
+                val viewModel: AppointmentsViewModel = hiltViewModel()
+                AppointmentsScreen(
+                    viewModel = viewModel,
+                    onAddClick = { navController.navigate(Screen.AppointmentAdd.route) },
+                    onAppointmentClick = { id -> navController.navigate("appointment/detail/$id") }
+                )
+            }
+
+            // Appointment Add
+            composable(Screen.AppointmentAdd.route) {
+                val viewModel: AppointmentEditorViewModel = hiltViewModel()
+                AppointmentEditorScreen(
+                    viewModel = viewModel,
+                    onBack = { navController.popBackStack() }
+                )
+            }
+
+            // Appointment Edit
+            composable(
+                route = Screen.AppointmentEdit.route,
+                arguments = listOf(navArgument("appointmentId") { type = NavType.StringType })
+            ) {
+                val viewModel: AppointmentEditorViewModel = hiltViewModel()
+                AppointmentEditorScreen(
+                    viewModel = viewModel,
+                    onBack = { navController.popBackStack() }
+                )
+            }
+
+            // Appointment Detail
+            composable(
+                route = Screen.AppointmentDetail.route,
+                arguments = listOf(navArgument("appointmentId") { type = NavType.StringType })
+            ) {
+                val viewModel: AppointmentDetailViewModel = hiltViewModel()
+                AppointmentDetailScreen(
+                    viewModel = viewModel,
+                    onBack = { navController.popBackStack() },
+                    onEdit = { id -> navController.navigate("appointment/edit/$id") }
                 )
             }
 
