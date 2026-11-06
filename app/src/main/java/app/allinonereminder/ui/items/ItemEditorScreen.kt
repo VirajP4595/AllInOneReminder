@@ -46,6 +46,7 @@ fun ItemEditorScreen(
     onGraceMinutesChange: (Int) -> Unit = {},
     onReRingMinutesChange: (Int) -> Unit = {},
     onMinGapMinutesChange: (Int) -> Unit = {},
+    onMaxPerDayChange: (String) -> Unit = {},
     onAddSchedule: () -> Unit = {},
     onRemoveSchedule: (String) -> Unit = {},
     onUpdateSchedule: (String, (ScheduleDraft) -> ScheduleDraft) -> Unit = { _, _ -> },
@@ -288,6 +289,17 @@ fun ItemEditorScreen(
                 )
             }
 
+            if (uiState.schedules.any { it.recurrence == RecurrenceType.PRN }) {
+                OutlinedTextField(
+                    value = uiState.maxPerDay?.toString() ?: "",
+                    onValueChange = onMaxPerDayChange,
+                    label = { Text("Max doses per day (as needed)") },
+                    placeholder = { Text("e.g. 3") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
+
             HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
 
             // Advanced Settings Toggle
@@ -455,23 +467,327 @@ private fun ScheduleDraftCard(
             // Recurrence
             Text("Recurrence", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
             LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                items(listOf(RecurrenceType.DAILY, RecurrenceType.WEEKDAYS, RecurrenceType.EVERY_N_DAYS, RecurrenceType.ONCE)) { rec ->
+                item {
                     FilterChip(
-                        selected = draft.recurrence == rec,
-                        onClick = { onUpdate { it.copy(recurrence = rec) } },
-                        label = {
-                            Text(when (rec) {
-                                RecurrenceType.DAILY -> "Daily"
-                                RecurrenceType.WEEKDAYS -> "Weekdays"
-                                RecurrenceType.EVERY_N_DAYS -> "Every N Days"
-                                RecurrenceType.EVERY_N_WEEKS -> "Every N Weeks"
-                                RecurrenceType.ONCE -> "Once"
-                            })
-                        }
+                        selected = draft.recurrence == RecurrenceType.DAILY,
+                        onClick = { onUpdate { it.copy(recurrence = RecurrenceType.DAILY) } },
+                        label = { Text("Daily") }
+                    )
+                }
+                item {
+                    FilterChip(
+                        selected = draft.recurrence == RecurrenceType.EVERY_N_WEEKS && (draft.intervalN ?: 1) == 1,
+                        onClick = {
+                            onUpdate {
+                                it.copy(
+                                    recurrence = RecurrenceType.EVERY_N_WEEKS,
+                                    intervalN = 1,
+                                    weekdayMask = it.weekdayMask ?: 127
+                                )
+                            }
+                        },
+                        label = { Text("Specific days") }
+                    )
+                }
+                item {
+                    FilterChip(
+                        selected = draft.recurrence == RecurrenceType.EVERY_N_DAYS,
+                        onClick = {
+                            onUpdate {
+                                it.copy(
+                                    recurrence = RecurrenceType.EVERY_N_DAYS,
+                                    intervalN = it.intervalN?.coerceAtLeast(1) ?: 1
+                                )
+                            }
+                        },
+                        label = { Text("Every N days") }
+                    )
+                }
+                item {
+                    FilterChip(
+                        selected = draft.recurrence == RecurrenceType.EVERY_N_WEEKS && (draft.intervalN ?: 1) != 1,
+                        onClick = {
+                            onUpdate {
+                                it.copy(
+                                    recurrence = RecurrenceType.EVERY_N_WEEKS,
+                                    intervalN = if ((it.intervalN ?: 1) <= 1) 2 else it.intervalN,
+                                    weekdayMask = it.weekdayMask ?: 127
+                                )
+                            }
+                        },
+                        label = { Text("Every N weeks") }
+                    )
+                }
+                item {
+                    FilterChip(
+                        selected = draft.recurrence == RecurrenceType.MONTHLY,
+                        onClick = { onUpdate { it.copy(recurrence = RecurrenceType.MONTHLY) } },
+                        label = { Text("Monthly") }
+                    )
+                }
+                item {
+                    FilterChip(
+                        selected = draft.recurrence == RecurrenceType.INTERVAL,
+                        onClick = { onUpdate { it.copy(recurrence = RecurrenceType.INTERVAL) } },
+                        label = { Text("Every N hours") }
+                    )
+                }
+                item {
+                    FilterChip(
+                        selected = draft.recurrence == RecurrenceType.PRN,
+                        onClick = { onUpdate { it.copy(recurrence = RecurrenceType.PRN) } },
+                        label = { Text("As needed") }
+                    )
+                }
+                item {
+                    FilterChip(
+                        selected = draft.recurrence == RecurrenceType.ONCE,
+                        onClick = { onUpdate { it.copy(recurrence = RecurrenceType.ONCE) } },
+                        label = { Text("Once") }
                     )
                 }
             }
+
+            when (draft.recurrence) {
+                RecurrenceType.EVERY_N_DAYS -> {
+                    NumberStepper(
+                        label = "Repeat every",
+                        value = draft.intervalN ?: 1,
+                        suffix = if ((draft.intervalN ?: 1) == 1) "day" else "days",
+                        min = 1,
+                        onChange = { value -> onUpdate { it.copy(intervalN = value) } }
+                    )
+                }
+                RecurrenceType.EVERY_N_WEEKS -> {
+                    NumberStepper(
+                        label = "Repeat every",
+                        value = draft.intervalN ?: 1,
+                        suffix = if ((draft.intervalN ?: 1) == 1) "week" else "weeks",
+                        min = 1,
+                        onChange = { value -> onUpdate { it.copy(intervalN = value) } }
+                    )
+                    WeekdayChips(
+                        mask = draft.weekdayMask ?: 127,
+                        onToggle = { bit ->
+                            onUpdate { it.copy(weekdayMask = (it.weekdayMask ?: 127) xor bit) }
+                        }
+                    )
+                }
+                RecurrenceType.MONTHLY -> {
+                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        FilterChip(
+                            selected = !draft.monthlyByWeekday,
+                            onClick = { onUpdate { it.copy(monthlyByWeekday = false) } },
+                            label = { Text("On a day") }
+                        )
+                        FilterChip(
+                            selected = draft.monthlyByWeekday,
+                            onClick = {
+                                onUpdate {
+                                    it.copy(
+                                        monthlyByWeekday = true,
+                                        weekdayMask = it.weekdayMask?.takeIf { mask -> mask != 0 } ?: 2
+                                    )
+                                }
+                            },
+                            label = { Text("On the Nth weekday") }
+                        )
+                    }
+                    if (draft.monthlyByWeekday) {
+                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            listOf(1 to "1st", 2 to "2nd", 3 to "3rd", 4 to "4th", 5 to "Last").forEach { (week, label) ->
+                                FilterChip(
+                                    selected = draft.nthWeek == week,
+                                    onClick = { onUpdate { it.copy(nthWeek = week) } },
+                                    label = { Text(label) }
+                                )
+                            }
+                        }
+                        WeekdayChips(
+                            mask = draft.weekdayMask?.takeIf { it != 0 } ?: 2,
+                            singleSelect = true,
+                            onToggle = { bit -> onUpdate { it.copy(weekdayMask = bit) } }
+                        )
+                    } else {
+                        NumberStepper(
+                            label = "Day of the month",
+                            value = draft.dayOfMonth,
+                            min = 1,
+                            max = 31,
+                            onChange = { value -> onUpdate { it.copy(dayOfMonth = value) } }
+                        )
+                        Text(
+                            text = "31st is treated as the last day in shorter months.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+                RecurrenceType.INTERVAL -> {
+                    NumberStepper(
+                        label = "Hours between doses",
+                        value = draft.intervalHours,
+                        suffix = "h",
+                        min = 1,
+                        max = 24,
+                        onChange = { value -> onUpdate { it.copy(intervalHours = value) } }
+                    )
+                    MinuteOfDayStepper(
+                        label = "First dose",
+                        value = draft.windowStartMinute,
+                        onChange = { value -> onUpdate { it.copy(windowStartMinute = value) } }
+                    )
+                    MinuteOfDayStepper(
+                        label = "Last dose",
+                        value = draft.windowEndMinute,
+                        onChange = { value -> onUpdate { it.copy(windowEndMinute = value) } }
+                    )
+                }
+                RecurrenceType.PRN -> {
+                    Text(
+                        text = "No fixed times. Use Take now in the Today screen when needed.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                RecurrenceType.ONCE -> {
+                    Text(
+                        text = "Rings once on the item start date.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                else -> Unit
+            }
+
+            Text("Only between dates (optional)", style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.SemiBold)
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                OutlinedTextField(
+                    value = draft.validFrom ?: "",
+                    onValueChange = { value -> onUpdate { it.copy(validFrom = value.ifBlank { null }) } },
+                    label = { Text("From") },
+                    placeholder = { Text("YYYY-MM-DD") },
+                    singleLine = true,
+                    modifier = Modifier.weight(1f)
+                )
+                OutlinedTextField(
+                    value = draft.validUntil ?: "",
+                    onValueChange = { value -> onUpdate { it.copy(validUntil = value.ifBlank { null }) } },
+                    label = { Text("Until") },
+                    placeholder = { Text("YYYY-MM-DD") },
+                    singleLine = true,
+                    modifier = Modifier.weight(1f)
+                )
+            }
+            OutlinedTextField(
+                value = draft.doseAmountOverride ?: "",
+                onValueChange = { value -> onUpdate { it.copy(doseAmountOverride = value.ifBlank { null }) } },
+                label = { Text("Dose for this schedule (optional)") },
+                placeholder = { Text("e.g. 10 mg") },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth()
+            )
         }
+    }
+}
+
+@Composable
+private fun NumberStepper(
+    label: String,
+    value: Int,
+    min: Int = 1,
+    max: Int = 99,
+    suffix: String = "",
+    onChange: (Int) -> Unit
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(label, style = MaterialTheme.typography.bodyMedium)
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            IconButton(
+                onClick = { onChange((value - 1).coerceAtLeast(min)) },
+                enabled = value > min
+            ) {
+                Icon(Icons.Default.Remove, contentDescription = "Decrease $label")
+            }
+            Text(
+                text = if (suffix.isEmpty()) "$value" else "$value $suffix",
+                fontWeight = FontWeight.Bold,
+                fontSize = 18.sp,
+                modifier = Modifier.padding(horizontal = 8.dp)
+            )
+            IconButton(
+                onClick = { onChange((value + 1).coerceAtMost(max)) },
+                enabled = value < max
+            ) {
+                Icon(Icons.Default.Add, contentDescription = "Increase $label")
+            }
+        }
+    }
+}
+
+@Composable
+private fun MinuteOfDayStepper(
+    label: String,
+    value: Int,
+    onChange: (Int) -> Unit
+) {
+    val hour = (value / 60) % 24
+    val minute = value % 60
+    val ampm = if (hour >= 12) "PM" else "AM"
+    val hour12 = if (hour % 12 == 0) 12 else hour % 12
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(label, style = MaterialTheme.typography.bodyMedium)
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            IconButton(onClick = { onChange((value - 30 + 1440) % 1440) }) {
+                Icon(Icons.Default.Remove, contentDescription = "Decrease $label")
+            }
+            Text(
+                text = String.format("%d:%02d %s", hour12, minute, ampm),
+                fontWeight = FontWeight.Bold,
+                fontSize = 18.sp,
+                modifier = Modifier.padding(horizontal = 8.dp)
+            )
+            IconButton(onClick = { onChange((value + 30) % 1440) }) {
+                Icon(Icons.Default.Add, contentDescription = "Increase $label")
+            }
+        }
+    }
+}
+
+@Composable
+private fun WeekdayChips(
+    mask: Int,
+    singleSelect: Boolean = false,
+    onToggle: (Int) -> Unit
+) {
+    val days = listOf("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun")
+    LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        items(days.size) { index ->
+            val bit = 1 shl index
+            FilterChip(
+                selected = (mask and bit) != 0,
+                onClick = { onToggle(bit) },
+                label = { Text(days[index]) }
+            )
+        }
+    }
+    if (!singleSelect) {
+        Text(
+            text = "Pick the days this reminder repeats.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
     }
 }
 

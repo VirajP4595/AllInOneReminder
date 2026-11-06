@@ -253,6 +253,9 @@ class ScheduleRepository(
     fun getActiveSchedules(itemId: String): Flow<List<Schedule>> =
         scheduleDao.getActiveByItemId(itemId).map { list -> list.map { it.toDomain() } }
 
+    fun getAllActiveSchedules(): Flow<List<Schedule>> =
+        scheduleDao.getAllActive().map { list -> list.map { it.toDomain() } }
+
     suspend fun getAllActiveSchedulesSync(): List<Schedule> =
         scheduleDao.getAllActiveSync().map { it.toDomain() }
 
@@ -324,6 +327,9 @@ class OccurrenceRepository(
 
     suspend fun getLastTakenBeforeSync(itemId: String, beforeTime: Long): Occurrence? =
         occurrenceDao.getLastTakenBeforeSync(itemId, beforeTime)?.toDomain()
+
+    suspend fun countTakenBetweenSync(itemId: String, from: Long, to: Long): Int =
+        occurrenceDao.countTakenBetweenSync(itemId, from, to)
 
     fun getHistoryByItem(itemId: String, limit: Int = 30): Flow<List<Occurrence>> =
         occurrenceDao.getHistoryByItem(itemId, limit).map { list -> list.map { it.toDomain() } }

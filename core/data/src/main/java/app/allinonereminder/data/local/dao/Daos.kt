@@ -144,6 +144,9 @@ interface ScheduleDao {
     fun getActiveByItemId(itemId: String): Flow<List<ScheduleEntity>>
 
     @Query("SELECT * FROM schedule WHERE deletedAt IS NULL")
+    fun getAllActive(): Flow<List<ScheduleEntity>>
+
+    @Query("SELECT * FROM schedule WHERE deletedAt IS NULL")
     suspend fun getAllActiveSync(): List<ScheduleEntity>
 
     @Query("SELECT * FROM schedule WHERE id = :id AND deletedAt IS NULL")
@@ -214,6 +217,9 @@ interface OccurrenceDao {
 
     @Query("SELECT * FROM occurrence WHERE itemId = :itemId AND status = 'TAKEN' AND actedAt IS NOT NULL AND actedAt <= :beforeTime ORDER BY actedAt DESC LIMIT 1")
     suspend fun getLastTakenBeforeSync(itemId: String, beforeTime: Long): OccurrenceEntity?
+
+    @Query("SELECT COUNT(*) FROM occurrence WHERE itemId = :itemId AND status = 'TAKEN' AND actedAt >= :from AND actedAt < :to")
+    suspend fun countTakenBetweenSync(itemId: String, from: Long, to: Long): Int
 
     @Query("SELECT * FROM occurrence WHERE itemId = :itemId ORDER BY plannedAt DESC LIMIT :limit")
     fun getHistoryByItem(itemId: String, limit: Int = 30): Flow<List<OccurrenceEntity>>

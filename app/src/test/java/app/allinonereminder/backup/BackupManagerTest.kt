@@ -106,6 +106,7 @@ class BackupManagerTest {
             timePolicy = TimePolicy.LOCAL_WALL_CLOCK,
             homeZoneId = "Asia/Kolkata",
             startDate = "2026-01-01",
+            maxPerDay = 3,
             createdAt = now,
             updatedAt = now,
             deletedAt = null
@@ -124,6 +125,14 @@ class BackupManagerTest {
             intervalN = null,
             weekdayMask = null,
             anchorDate = "2026-01-01",
+            dayOfMonth = 15,
+            nthWeek = 2,
+            intervalHours = 4,
+            windowStartMinute = 480,
+            windowEndMinute = 1200,
+            validFrom = "2026-01-01",
+            validUntil = "2026-02-01",
+            doseAmountOverride = "10",
             createdAt = now,
             updatedAt = now,
             deletedAt = null
@@ -216,10 +225,19 @@ class BackupManagerTest {
         assertThat(restoredItems).hasSize(1)
         assertThat(restoredItems[0].name).isEqualTo("Blood Pressure Med")
         assertThat(restoredItems[0].dosageAmount).isEqualTo("20")
+        assertThat(restoredItems[0].maxPerDay).isEqualTo(3)
 
         val restoredSchedules = db.scheduleDao().getAllSync()
         assertThat(restoredSchedules).hasSize(1)
         assertThat(restoredSchedules[0].relation).isEqualTo(MealRelation.AFTER)
+        assertThat(restoredSchedules[0].dayOfMonth).isEqualTo(15)
+        assertThat(restoredSchedules[0].nthWeek).isEqualTo(2)
+        assertThat(restoredSchedules[0].intervalHours).isEqualTo(4)
+        assertThat(restoredSchedules[0].windowStartMinute).isEqualTo(480)
+        assertThat(restoredSchedules[0].windowEndMinute).isEqualTo(1200)
+        assertThat(restoredSchedules[0].validFrom).isEqualTo("2026-01-01")
+        assertThat(restoredSchedules[0].validUntil).isEqualTo("2026-02-01")
+        assertThat(restoredSchedules[0].doseAmountOverride).isEqualTo("10")
 
         val restoredOccs = db.occurrenceDao().getAllSync()
         // Contains the restored historical occurrence plus newly materialized occurrences from reschedule()
@@ -537,5 +555,94 @@ class BackupManagerTest {
         val exportedPath = photosArray.getJSONObject(0).getString("filePath")
         assertThat(exportedPath).isEqualTo("photos/aspirin.jpg")
         assertThat(exportedPath.startsWith("/")).isFalse()
+    }
+
+    @Test
+    fun restore_backupFromBeforeScheduleTypes_defaultsNewFieldsToNull() = runBlocking {
+        val passphrase = "OldBackupPassword".toCharArray()
+
+        // A version-1 backup written before MONTHLY/INTERVAL/PRN and taper fields existed.
+        val oldJson = """
+            {
+              "version": 1,
+              "exportedAt": 1700000000000,
+              "profiles": [
+                {"id":"prof-old","name":"Old User","colorArgb":255,"createdAt":1000,"updatedAt":1000}
+              ],
+              "items": [
+                {
+                  "id":"item-old","profileId":"prof-old","type":"MEDICINE","name":"Old Med",
+                  "dosageAmount":"5","dosageUnit":"mg","criticality":"NORMAL",
+                  "graceMinutes":60,"reRingMinutes":5,"timePolicy":"LOCAL_WALL_CLOCK",
+                  "homeZoneId":"UTC","startDate":"2026-01-01","createdAt":1000,"updatedAt":1000
+                }
+              ],
+              "schedules": [
+                {
+                  "id":"sched-old","itemId":"item-old","anchorType":"FIXED","minuteOfDay":480,
+                  "recurrence":"DAILY","anchorDate":"2026-01-01","createdAt":1000,"updatedAt":1000
+                }
+              ]
+            }
+        """.trimIndent()
+
+        val encrypted = encryptBackupJson(oldJson, passphrase)
+        val preview = backupManager.restoreBackup(ByteArrayInputStream(encrypted), passphrase)
+
+        assertThat(preview.itemsCount).isEqualTo(1)
+        assertThat(preview.schedulesCount).isEqualTo(1)
+
+        val restoredItem = db.itemDao().getAllSync().single()
+        assertThat(restoredItem.name).isEqualTo("Old Med")
+        assertThat(restoredItem.maxPerDay).isNull()
+
+        val restoredSchedule = db.scheduleDao().getAllSync().single()
+        assertThat(restoredSchedule.recurrence).isEqualTo(RecurrenceType.DAILY)
+        assertThat(restoredSchedule.dayOfMonth).isNull()
+        assertThat(restoredSchedule.nthWeek).isNull()
+        assertThat(restoredSchedule.intervalHours).isNull()
+        assertThat(restoredSchedule.windowStartMinute).isNull()
+        assertThat(restoredSchedule.windowEndMinute).isNull()
+        assertThat(restoredSchedule.validFrom).isNull()
+        assertThat(restoredSchedule.validUntil).isNull()
+        assertThat(restoredSchedule.doseAmountOverride).isNull()
+    }
+
+    /** Builds an encrypted backup archive the same way [BackupManager.createBackup] does. */
+    private fun encryptBackupJson(json: String, passphrase: CharArray): ByteArray {
+        val zipBaos = ByteArrayOutputStream()
+        java.util.zip.ZipOutputStream(zipBaos).use { zos ->
+            zos.putNextEntry(java.util.zip.ZipEntry("backup.json"))
+            zos.write(json.toByteArray(Charsets.UTF_8))
+            zos.closeEntry()
+        }
+
+        val salt = ByteArray(BackupManager.SALT_LENGTH_BYTES).also { java.security.SecureRandom().nextBytes(it) }
+        val iv = ByteArray(BackupManager.IV_LENGTH_BYTES).also { java.security.SecureRandom().nextBytes(it) }
+        val keySpec = javax.crypto.spec.PBEKeySpec(
+            passphrase,
+            salt,
+            BackupManager.PBKDF2_ITERATIONS,
+            BackupManager.KEY_LENGTH_BITS
+        )
+        val keyBytes = javax.crypto.SecretKeyFactory
+            .getInstance("PBKDF2WithHmacSHA256")
+            .generateSecret(keySpec)
+            .encoded
+        val cipher = javax.crypto.Cipher.getInstance("AES/GCM/NoPadding")
+        cipher.init(
+            javax.crypto.Cipher.ENCRYPT_MODE,
+            javax.crypto.spec.SecretKeySpec(keyBytes, "AES"),
+            javax.crypto.spec.GCMParameterSpec(BackupManager.GCM_TAG_LENGTH_BITS, iv)
+        )
+        val ciphertext = cipher.doFinal(zipBaos.toByteArray())
+
+        return ByteArrayOutputStream().apply {
+            write(BackupManager.MAGIC_BYTES)
+            write(java.nio.ByteBuffer.allocate(4).putInt(BackupManager.VERSION).array())
+            write(salt)
+            write(iv)
+            write(ciphertext)
+        }.toByteArray()
     }
 }

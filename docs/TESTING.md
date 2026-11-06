@@ -107,9 +107,29 @@ Record pass/fail per device in the pull request description.
      ```
    - **Expected Result:** Dose remains `PENDING` for 09:00 London time. It is NOT marked `MISSED` 5.5 hours prematurely.
 
+### Item 13: Schedule types, as-needed doses, and taper overrides (#28)
+**Objective:** Verify the editor can express each supported schedule shape, the engine honours it, and as-needed doses are logged without planned alarms.
+1. Create a medicine and open the schedule editor.
+   - **Expected Result:** The recurrence row offers Daily, Specific days, Every N days, Every N weeks, Monthly, Every N hours, As needed, and Once.
+2. Choose **Specific days**, select Mon and Thu.
+   - **Expected Result:** The summary reads `Specific days (Mon, Thu)`; the item appears on those weekdays only.
+3. Choose **Monthly**, "On a day" = 31.
+   - **Expected Result:** In February the reminder fires on the 28th (29th in a leap year); in April it fires on the 30th.
+4. Choose **Monthly**, "On the Nth weekday" = Last + Friday.
+   - **Expected Result:** It fires on the last Friday of each month.
+5. Choose **Every N hours**, 4 hours, first dose 08:00, last dose 20:00.
+   - **Expected Result:** Four notifications at 08:00, 12:00, 16:00, and 20:00; spring-forward days shift the nonexistent hour forward instead of skipping the dose.
+6. Choose **As needed**, set "Max doses per day" = 3. Open **Today**.
+   - **Expected Result:** An **As needed** card shows the item and "Taken today: 0 of 3". Tapping **Take now** logs a Taken dose immediately and updates to 1 of 3. At 3 of 3 the button becomes **Daily limit reached** and further taps do nothing.
+7. With `minGapMinutes = 240`, take an as-needed dose, then tap **Take now** again within 4 hours.
+   - **Expected Result:** The Double-Dose Warning dialog appears; Cancel logs nothing, Take Anyway logs the dose.
+8. Set a schedule's "Only between dates" to today..tomorrow and a "Dose for this schedule" of 250.
+   - **Expected Result:** The Today and alarm screens show 250 for the schedule while the item's base dose stays unchanged; no doses are planned after the end date.
+9. Rotate through two taper schedules with different date ranges and doses.
+   - **Expected Result:** Doses switch on the boundary date and the old step stops appearing.
+
 ---
 
-## Complete Test Matrix
 
 | # | Scenario | ADB / Device Steps | Expected Result |
 |---|---|---|---|

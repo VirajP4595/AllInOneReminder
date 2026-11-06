@@ -18,9 +18,11 @@ import android.os.VibratorManager
 import app.allinonereminder.data.repository.ItemRepository
 import app.allinonereminder.data.repository.OccurrenceRepository
 import app.allinonereminder.data.repository.ProfileRepository
+import app.allinonereminder.data.repository.ScheduleRepository
 import app.allinonereminder.data.repository.SettingsRepository
 import app.allinonereminder.model.Criticality
 import app.allinonereminder.model.OccurrenceStatus
+import app.allinonereminder.model.effectiveDoseAmount
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
@@ -70,6 +72,9 @@ class AlarmRingService : Service() {
 
     @Inject
     lateinit var settingsRepository: SettingsRepository
+
+    @Inject
+    lateinit var scheduleRepository: ScheduleRepository
 
     @Inject
     lateinit var alarmCoordinator: AlarmCoordinator
@@ -128,7 +133,14 @@ class AlarmRingService : Service() {
                         }
                         val title = if (remainingOccs.size > 1) "${remainingOccs.size} Reminders Due" else "${remainingItems.firstOrNull()?.name ?: "Medicine"} reminder"
                         val profileNames = remainingProfiles.map { it.name }.distinct().joinToString(", ")
-                        val content = if (remainingOccs.size > 1) "Due for $profileNames: ${remainingItems.joinToString(", ") { it.name }}" else "Due for $profileNames: ${remainingItems.firstOrNull()?.dosageAmount ?: ""}${remainingItems.firstOrNull()?.dosageUnit ?: ""}".trim()
+                        val content = if (remainingOccs.size > 1) {
+                            "Due for $profileNames: ${remainingItems.joinToString(", ") { it.name }}"
+                        } else {
+                            val firstItem = remainingItems.firstOrNull()
+                            val schedule = remainingOccs.firstOrNull()?.let { scheduleRepository.getScheduleSync(it.scheduleId) }
+                            val dose = if (firstItem != null) effectiveDoseAmount(schedule, firstItem) else ""
+                            "Due for $profileNames: $dose${firstItem?.dosageUnit ?: ""}".trim()
+                        }
                         val notification = AlarmNotificationHelper.buildRingingNotification(
                             this@AlarmRingService,
                             activeOccurrenceIds.toTypedArray(),
@@ -204,7 +216,9 @@ class AlarmRingService : Service() {
             "For $profileNames"
         } else {
             val item = items.firstOrNull()
-            "${item?.dosageAmount ?: ""} ${item?.dosageUnit ?: ""} - $profileNames"
+            val schedule = occurrences.firstOrNull()?.let { scheduleRepository.getScheduleSync(it.scheduleId) }
+            val dose = if (item != null) effectiveDoseAmount(schedule, item) else ""
+            "$dose ${item?.dosageUnit ?: ""} - $profileNames"
         }
 
         val notification = AlarmNotificationHelper.buildRingingNotification(

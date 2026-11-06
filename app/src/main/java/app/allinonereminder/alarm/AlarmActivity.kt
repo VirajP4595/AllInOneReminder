@@ -67,6 +67,7 @@ import app.allinonereminder.model.Profile
 import app.allinonereminder.model.Schedule
 import app.allinonereminder.model.ScheduleAnchorType
 import app.allinonereminder.model.SkipReason
+import app.allinonereminder.model.effectiveDoseAmount
 import app.allinonereminder.schedule.SchedulingEngine
 import dagger.hilt.android.AndroidEntryPoint
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -582,7 +583,7 @@ fun AlarmItemCard(
             )
             Spacer(modifier = Modifier.height(4.dp))
             Text(
-                text = "${uiModel.item.dosageAmount} ${uiModel.item.dosageUnit} ${uiModel.item.form ?: ""}",
+                text = "${effectiveDoseAmount(uiModel.schedule, uiModel.item)} ${uiModel.item.dosageUnit} ${uiModel.item.form ?: ""}",
                 fontSize = 20.sp,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )

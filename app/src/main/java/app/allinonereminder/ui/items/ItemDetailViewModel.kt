@@ -55,7 +55,7 @@ class ItemDetailViewModel @Inject constructor(
             val profile = profileRepository.getProfileSync(item.profileId)
             val schedules = scheduleRepository.getActiveSchedules(itemId).firstOrNull() ?: emptyList()
             val photos = itemRepository.getPhotosSync(itemId)
-            val summary = ItemsViewModel.formatSchedulesSummary(schedules)
+            val summary = ItemsViewModel.formatSchedulesSummary(schedules, item)
 
             // Last 30 occurrences
             val last30 = occurrenceRepository.getHistoryByItem(itemId, 30).firstOrNull() ?: emptyList()

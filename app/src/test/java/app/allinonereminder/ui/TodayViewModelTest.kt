@@ -11,6 +11,7 @@ import app.allinonereminder.data.repository.*
 import app.allinonereminder.model.*
 import app.allinonereminder.ui.items.ItemsViewModel
 import app.allinonereminder.ui.today.OccurrenceUiModel
+import app.allinonereminder.ui.today.AsNeededUiModel
 import app.allinonereminder.ui.today.TodayViewModel
 import com.google.common.truth.Truth.assertThat
 import kotlinx.coroutines.Dispatchers
@@ -406,5 +407,325 @@ class TodayViewModelTest {
         }
 
         assertThat(settingsRepo.lastRescheduleErrorFlow.first()).isNull()
+    }
+
+    @Test
+    fun itemsViewModel_formatSchedulesSummary_describesNewRecurrenceTypesAndDoseOverride() {
+        val monthly = Schedule(
+            id = "s-monthly",
+            itemId = "i-1",
+            anchorType = ScheduleAnchorType.FIXED,
+            minuteOfDay = 8 * 60,
+            recurrence = RecurrenceType.MONTHLY,
+            dayOfMonth = 15,
+            anchorDate = "2026-01-01",
+            createdAt = 0L,
+            updatedAt = 0L
+        )
+        val lastFriday = Schedule(
+            id = "s-last-friday",
+            itemId = "i-1",
+            anchorType = ScheduleAnchorType.FIXED,
+            minuteOfDay = 20 * 60,
+            recurrence = RecurrenceType.MONTHLY,
+            weekdayMask = 1 shl 4, // Friday
+            nthWeek = 5,
+            anchorDate = "2026-01-01",
+            createdAt = 0L,
+            updatedAt = 0L
+        )
+        val interval = Schedule(
+            id = "s-interval",
+            itemId = "i-1",
+            anchorType = ScheduleAnchorType.FIXED,
+            recurrence = RecurrenceType.INTERVAL,
+            intervalHours = 4,
+            windowStartMinute = 8 * 60,
+            windowEndMinute = 20 * 60,
+            anchorDate = "2026-01-01",
+            createdAt = 0L,
+            updatedAt = 0L
+        )
+        val asNeeded = Schedule(
+            id = "s-prn",
+            itemId = "i-1",
+            anchorType = ScheduleAnchorType.FIXED,
+            recurrence = RecurrenceType.PRN,
+            doseAmountOverride = "250",
+            anchorDate = "2026-01-01",
+            createdAt = 0L,
+            updatedAt = 0L
+        )
+
+        val summary = ItemsViewModel.formatSchedulesSummary(listOf(monthly, lastFriday, interval, asNeeded))
+        assertThat(summary).contains("at 8:00 AM, Monthly on day 15")
+        assertThat(summary).contains("Monthly on the last Fri")
+        assertThat(summary).contains("Every 4 h from 8:00 AM to 8:00 PM")
+        assertThat(summary).contains("250 — As needed")
+    }
+
+    @Test
+    fun todayViewModel_takeAsNeeded_insertsTakenOccurrenceAtNow(): Unit = runBlocking {
+        val deviceId = settingsRepo.getOrCreateDeviceId()
+        val profile = profileRepo.createProfile("Mom", 0xFF0000, deviceId = deviceId)
+        val now = System.currentTimeMillis()
+        val item = Item(
+            id = "item-prn-1",
+            profileId = profile.id,
+            type = ItemType.MEDICINE,
+            name = "Pain Relief",
+            dosageAmount = "500",
+            dosageUnit = "mg",
+            criticality = Criticality.NORMAL,
+            graceMinutes = 60,
+            reRingMinutes = 5,
+            minGapMinutes = 240,
+            maxPerDay = 3,
+            timePolicy = TimePolicy.LOCAL_WALL_CLOCK,
+            homeZoneId = ZoneId.systemDefault().id,
+            startDate = LocalDate.now(ZoneId.systemDefault()).toString(),
+            createdAt = now,
+            updatedAt = now
+        )
+        itemRepo.createItem(item, deviceId)
+
+        val schedule = Schedule(
+            id = "sched-prn-1",
+            itemId = item.id,
+            anchorType = ScheduleAnchorType.FIXED,
+            recurrence = RecurrenceType.PRN,
+            anchorDate = LocalDate.now(ZoneId.systemDefault()).toString(),
+            createdAt = now,
+            updatedAt = now
+        )
+        scheduleRepo.createSchedule(schedule, deviceId)
+
+        val viewModel = TodayViewModel(
+            context = context,
+            profileRepository = profileRepo,
+            itemRepository = itemRepo,
+            occurrenceRepository = occurrenceRepo,
+            scheduleRepository = scheduleRepo,
+            mealSessionRepository = mealSessionRepo,
+            settingsRepository = settingsRepo,
+            changeLogWriter = changeLogWriter,
+            alarmCoordinator = coordinator
+        )
+
+        viewModel.onTakeAsNeeded(
+            AsNeededUiModel(
+                item = item,
+                profile = profile,
+                schedule = schedule,
+                takenToday = 0,
+                maxPerDay = 3,
+                canTake = true
+            )
+        )
+
+        var created: List<Occurrence> = emptyList()
+        for (i in 0 until 50) {
+            testDispatcher.scheduler.runCurrent()
+            created = occurrenceRepo.getOccurrencesBetweenSync(0, Long.MAX_VALUE)
+                .filter { it.itemId == item.id }
+            if (created.isNotEmpty()) break
+            Thread.sleep(20)
+        }
+
+        assertThat(created).hasSize(1)
+        val occurrence = created.single()
+        assertThat(occurrence.status).isEqualTo(OccurrenceStatus.TAKEN)
+        assertThat(occurrence.scheduleId).isEqualTo(schedule.id)
+        assertThat(occurrence.profileId).isEqualTo(profile.id)
+        assertThat(occurrence.plannedAt).isEqualTo(occurrence.dueAt)
+        assertThat(occurrence.dueAt).isEqualTo(occurrence.remindAt)
+        assertThat(occurrence.remindAt).isEqualTo(occurrence.actedAt)
+        assertThat(occurrence.deviceId).isEqualTo(deviceId)
+    }
+
+    @Test
+    fun todayViewModel_takeAsNeeded_blocksWhenDailyLimitReached() = runBlocking {
+        val deviceId = settingsRepo.getOrCreateDeviceId()
+        val profile = profileRepo.createProfile("Mom", 0xFF0000, deviceId = deviceId)
+        val now = System.currentTimeMillis()
+        val item = Item(
+            id = "item-prn-limit",
+            profileId = profile.id,
+            type = ItemType.MEDICINE,
+            name = "Pain Relief",
+            dosageAmount = "500",
+            dosageUnit = "mg",
+            criticality = Criticality.NORMAL,
+            graceMinutes = 60,
+            reRingMinutes = 5,
+            minGapMinutes = 0,
+            maxPerDay = 1,
+            timePolicy = TimePolicy.LOCAL_WALL_CLOCK,
+            homeZoneId = ZoneId.systemDefault().id,
+            startDate = LocalDate.now(ZoneId.systemDefault()).toString(),
+            createdAt = now,
+            updatedAt = now
+        )
+        itemRepo.createItem(item, deviceId)
+
+        val schedule = Schedule(
+            id = "sched-prn-limit",
+            itemId = item.id,
+            anchorType = ScheduleAnchorType.FIXED,
+            recurrence = RecurrenceType.PRN,
+            anchorDate = LocalDate.now(ZoneId.systemDefault()).toString(),
+            createdAt = now,
+            updatedAt = now
+        )
+        scheduleRepo.createSchedule(schedule, deviceId)
+
+        occurrenceRepo.upsertOccurrences(
+            listOf(
+                Occurrence(
+                    id = "existing-prn-dose",
+                    itemId = item.id,
+                    scheduleId = schedule.id,
+                    profileId = profile.id,
+                    plannedAt = now - 60_000L,
+                    dueAt = now - 60_000L,
+                    status = OccurrenceStatus.TAKEN,
+                    actedAt = now - 60_000L,
+                    deviceId = deviceId,
+                    updatedAt = now - 60_000L
+                )
+            )
+        )
+
+        val viewModel = TodayViewModel(
+            context = context,
+            profileRepository = profileRepo,
+            itemRepository = itemRepo,
+            occurrenceRepository = occurrenceRepo,
+            scheduleRepository = scheduleRepo,
+            mealSessionRepository = mealSessionRepo,
+            settingsRepository = settingsRepo,
+            changeLogWriter = changeLogWriter,
+            alarmCoordinator = coordinator
+        )
+
+        viewModel.onTakeAsNeeded(
+            AsNeededUiModel(
+                item = item,
+                profile = profile,
+                schedule = schedule,
+                takenToday = 1,
+                maxPerDay = 1,
+                canTake = false
+            )
+        )
+
+        for (i in 0 until 20) {
+            testDispatcher.scheduler.runCurrent()
+            Thread.sleep(10)
+        }
+
+        val all = occurrenceRepo.getOccurrencesBetweenSync(0, Long.MAX_VALUE)
+            .filter { it.itemId == item.id }
+        assertThat(all).hasSize(1)
+    }
+
+    @Test
+    fun todayViewModel_takeAsNeeded_warnsWithinMinGap_andForceRecordsDose(): Unit = runBlocking {
+        val deviceId = settingsRepo.getOrCreateDeviceId()
+        val profile = profileRepo.createProfile("Mom", 0xFF0000, deviceId = deviceId)
+        val now = System.currentTimeMillis()
+        val item = Item(
+            id = "item-prn-gap",
+            profileId = profile.id,
+            type = ItemType.MEDICINE,
+            name = "Pain Relief",
+            dosageAmount = "500",
+            dosageUnit = "mg",
+            criticality = Criticality.NORMAL,
+            graceMinutes = 60,
+            reRingMinutes = 5,
+            minGapMinutes = 240,
+            timePolicy = TimePolicy.LOCAL_WALL_CLOCK,
+            homeZoneId = ZoneId.systemDefault().id,
+            startDate = LocalDate.now(ZoneId.systemDefault()).toString(),
+            createdAt = now,
+            updatedAt = now
+        )
+        itemRepo.createItem(item, deviceId)
+
+        val schedule = Schedule(
+            id = "sched-prn-gap",
+            itemId = item.id,
+            anchorType = ScheduleAnchorType.FIXED,
+            recurrence = RecurrenceType.PRN,
+            anchorDate = LocalDate.now(ZoneId.systemDefault()).toString(),
+            createdAt = now,
+            updatedAt = now
+        )
+        scheduleRepo.createSchedule(schedule, deviceId)
+
+        occurrenceRepo.upsertOccurrences(
+            listOf(
+                Occurrence(
+                    id = "recent-prn-dose",
+                    itemId = item.id,
+                    scheduleId = schedule.id,
+                    profileId = profile.id,
+                    plannedAt = now - 10 * 60_000L,
+                    dueAt = now - 10 * 60_000L,
+                    status = OccurrenceStatus.TAKEN,
+                    actedAt = now - 10 * 60_000L,
+                    deviceId = deviceId,
+                    updatedAt = now - 10 * 60_000L
+                )
+            )
+        )
+
+        val viewModel = TodayViewModel(
+            context = context,
+            profileRepository = profileRepo,
+            itemRepository = itemRepo,
+            occurrenceRepository = occurrenceRepo,
+            scheduleRepository = scheduleRepo,
+            mealSessionRepository = mealSessionRepo,
+            settingsRepository = settingsRepo,
+            changeLogWriter = changeLogWriter,
+            alarmCoordinator = coordinator
+        )
+
+        val asNeeded = AsNeededUiModel(
+            item = item,
+            profile = profile,
+            schedule = schedule,
+            takenToday = 1,
+            maxPerDay = null,
+            canTake = true
+        )
+
+        viewModel.onTakeAsNeeded(asNeeded, force = false)
+        for (i in 0 until 50) {
+            testDispatcher.scheduler.runCurrent()
+            if (viewModel.asNeededWarning.value != null) break
+            Thread.sleep(20)
+        }
+
+        assertThat(viewModel.asNeededWarning.value).isNotNull()
+        assertThat(
+            occurrenceRepo.getOccurrencesBetweenSync(0, Long.MAX_VALUE).count { it.itemId == item.id }
+        ).isEqualTo(1)
+
+        viewModel.onTakeAsNeeded(asNeeded, force = true)
+        var all: List<Occurrence> = emptyList()
+        for (i in 0 until 50) {
+            testDispatcher.scheduler.runCurrent()
+            all = occurrenceRepo.getOccurrencesBetweenSync(0, Long.MAX_VALUE)
+                .filter { it.itemId == item.id }
+            if (all.size == 2) break
+            Thread.sleep(20)
+        }
+
+        assertThat(viewModel.asNeededWarning.value).isNull()
+        assertThat(all).hasSize(2)
+        assertThat(all.map { it.status }).containsExactly(OccurrenceStatus.TAKEN, OccurrenceStatus.TAKEN)
     }
 }

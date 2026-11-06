@@ -1051,5 +1051,50 @@ class AlarmCoordinatorTest {
         assertThat(recordedError).isNotNull()
         assertThat(recordedError).contains("IllegalStateException")
     }
-}
 
+    @Test
+    fun prnSchedule_neverRegistersAlarm(): Unit = runBlocking {
+        val deviceId = settingsRepo.getOrCreateDeviceId()
+        val now = 1700000000000L
+        val profile = profileRepo.createProfile("PRN User", 0xFF0000, deviceId = deviceId)
+
+        val item = Item(
+            id = "item-prn",
+            profileId = profile.id,
+            type = ItemType.MEDICINE,
+            name = "Aspirin",
+            dosageAmount = "100",
+            dosageUnit = "mg",
+            criticality = Criticality.NORMAL,
+            graceMinutes = 60,
+            reRingMinutes = 5,
+            minGapMinutes = 240,
+            maxPerDay = 3,
+            timePolicy = TimePolicy.LOCAL_WALL_CLOCK,
+            homeZoneId = "UTC",
+            startDate = "2026-01-01",
+            createdAt = now,
+            updatedAt = now
+        )
+        itemRepo.createItem(item, deviceId)
+
+        val prnSchedule = Schedule(
+            id = "sched-prn",
+            itemId = "item-prn",
+            anchorType = ScheduleAnchorType.FIXED,
+            recurrence = RecurrenceType.PRN,
+            anchorDate = "2026-01-01",
+            createdAt = now,
+            updatedAt = now
+        )
+        scheduleRepo.createSchedule(prnSchedule, deviceId)
+
+        coordinator.reschedule("test_prn")
+
+        val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as android.app.AlarmManager
+        val shadowAlarmManager = org.robolectric.Shadows.shadowOf(alarmManager)
+        assertThat(shadowAlarmManager.nextScheduledAlarm).isNull()
+        val occurrences = occurrenceRepo.getOccurrencesBetweenSync(0, Long.MAX_VALUE)
+        assertThat(occurrences).isEmpty()
+    }
+}
