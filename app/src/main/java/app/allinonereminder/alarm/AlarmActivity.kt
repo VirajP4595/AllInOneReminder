@@ -106,7 +106,8 @@ class AlarmViewModel @Inject constructor(
     private val profileRepository: ProfileRepository,
     private val scheduleRepository: ScheduleRepository,
     private val mealSessionRepository: MealSessionRepository,
-    private val alarmCoordinator: AlarmCoordinator
+    private val alarmCoordinator: AlarmCoordinator,
+    private val refillAlertNotifier: RefillAlertNotifier? = null
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(AlarmUiState())
@@ -164,6 +165,7 @@ class AlarmViewModel @Inject constructor(
                 for (occUi in list) {
                     occurrenceRepository.markTakenTargeted(occUi.occurrence.id, now.toEpochMilli())
                     AlarmRingService.stopForOccurrence(context, occUi.occurrence.id)
+                    refillAlertNotifier?.checkAndNotify(occUi.item.id)
                 }
                 alarmCoordinator.reschedule("Notification: Taken Direct")
                 _uiState.value = _uiState.value.copy(finished = true)
@@ -193,6 +195,7 @@ class AlarmViewModel @Inject constructor(
 
             // Mark taken via targeted update
             occurrenceRepository.markTakenTargeted(occurrenceId, now.toEpochMilli())
+            refillAlertNotifier?.checkAndNotify(occUi.item.id)
             dismissWarningDialog()
             checkCompletion(occurrenceId)
         }
@@ -219,6 +222,7 @@ class AlarmViewModel @Inject constructor(
             for (uiModel in _uiState.value.items) {
                 occurrenceRepository.markTakenTargeted(uiModel.occurrence.id, now.toEpochMilli())
                 AlarmRingService.stopForOccurrence(context, uiModel.occurrence.id)
+                refillAlertNotifier?.checkAndNotify(uiModel.item.id)
             }
             alarmCoordinator.reschedule("Alarm: All Taken")
             _uiState.value = _uiState.value.copy(finished = true)

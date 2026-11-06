@@ -232,6 +232,9 @@ fun MainAppNavigation(
                     onReRingMinutesChange = viewModel::updateReRingMinutes,
                     onMinGapMinutesChange = viewModel::updateMinGapMinutes,
                     onMaxPerDayChange = viewModel::updateMaxPerDay,
+                    onCurrentStockChange = viewModel::updateCurrentStock,
+                    onUnitsPerDoseChange = viewModel::updateUnitsPerDose,
+                    onRefillThresholdChange = viewModel::updateRefillThreshold,
                     onAddSchedule = viewModel::addSchedule,
                     onRemoveSchedule = viewModel::removeSchedule,
                     onUpdateSchedule = viewModel::updateSchedule,
@@ -265,6 +268,9 @@ fun MainAppNavigation(
                     onReRingMinutesChange = viewModel::updateReRingMinutes,
                     onMinGapMinutesChange = viewModel::updateMinGapMinutes,
                     onMaxPerDayChange = viewModel::updateMaxPerDay,
+                    onCurrentStockChange = viewModel::updateCurrentStock,
+                    onUnitsPerDoseChange = viewModel::updateUnitsPerDose,
+                    onRefillThresholdChange = viewModel::updateRefillThreshold,
                     onAddSchedule = viewModel::addSchedule,
                     onRemoveSchedule = viewModel::removeSchedule,
                     onUpdateSchedule = viewModel::updateSchedule,
@@ -286,6 +292,8 @@ fun MainAppNavigation(
                     uiState = uiState,
                     onEditClick = { itemId -> navController.navigate("item/edit/$itemId") },
                     onDeleteClick = viewModel::deleteItem,
+                    onRefillClick = viewModel::addRefill,
+                    onAdjustClick = viewModel::adjustStock,
                     onNavigateBack = { navController.popBackStack() }
                 )
             }

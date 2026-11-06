@@ -8,6 +8,7 @@ import app.allinonereminder.data.local.entity.MealSessionEntity
 import app.allinonereminder.data.local.entity.OccurrenceEntity
 import app.allinonereminder.data.local.entity.ProfileEntity
 import app.allinonereminder.data.local.entity.ScheduleEntity
+import app.allinonereminder.data.local.entity.StockEventEntity
 import app.allinonereminder.model.ChangeLog
 import app.allinonereminder.model.Item
 import app.allinonereminder.model.ItemPhoto
@@ -16,6 +17,7 @@ import app.allinonereminder.model.MealSession
 import app.allinonereminder.model.Occurrence
 import app.allinonereminder.model.Profile
 import app.allinonereminder.model.Schedule
+import app.allinonereminder.model.StockEvent
 
 fun ProfileEntity.toDomain() = Profile(
     id = id,
@@ -80,6 +82,8 @@ fun ItemEntity.toDomain() = Item(
     endDate = endDate,
     exerciseTargetMinutes = exerciseTargetMinutes,
     maxPerDay = maxPerDay,
+    unitsPerDose = unitsPerDose,
+    refillThreshold = refillThreshold,
     active = active,
     createdAt = createdAt,
     updatedAt = updatedAt,
@@ -105,6 +109,8 @@ fun Item.toEntity() = ItemEntity(
     endDate = endDate,
     exerciseTargetMinutes = exerciseTargetMinutes,
     maxPerDay = maxPerDay,
+    unitsPerDose = unitsPerDose,
+    refillThreshold = refillThreshold,
     active = active,
     createdAt = createdAt,
     updatedAt = updatedAt,
@@ -254,4 +260,23 @@ fun ChangeLog.toEntity() = ChangeLogEntity(
     changedAt = changedAt,
     deviceId = deviceId
 )
+
+fun StockEventEntity.toDomain() = StockEvent(
+    id = id,
+    itemId = itemId,
+    delta = delta,
+    reason = reason,
+    occurrenceId = occurrenceId,
+    createdAt = createdAt
+)
+
+fun StockEvent.toEntity() = StockEventEntity(
+    id = id,
+    itemId = itemId,
+    delta = delta,
+    reason = reason,
+    occurrenceId = occurrenceId,
+    createdAt = createdAt
+)
+
 

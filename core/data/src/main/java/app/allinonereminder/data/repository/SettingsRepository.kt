@@ -94,5 +94,16 @@ class SettingsRepository(
             vibrationEnabled?.let { prefs[KEY_VIBRATION] = it }
         }
     }
+
+    suspend fun getLastRefillAlertDate(itemId: String): String? {
+        val prefs = dataStore.data.first()
+        return prefs[stringPreferencesKey("refill_last_alert_$itemId")]
+    }
+
+    suspend fun setLastRefillAlertDate(itemId: String, date: String) {
+        dataStore.edit { prefs ->
+            prefs[stringPreferencesKey("refill_last_alert_$itemId")] = date
+        }
+    }
 }
 

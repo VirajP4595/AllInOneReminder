@@ -40,11 +40,15 @@ fun ItemDetailScreen(
     uiState: ItemDetailUiState,
     onEditClick: (String) -> Unit = {},
     onDeleteClick: () -> Unit = {},
+    onRefillClick: (Double) -> Unit = {},
+    onAdjustClick: (Double) -> Unit = {},
     onNavigateBack: () -> Unit = {}
 ) {
     val context = LocalContext.current
     var fullScreenPhotoId by remember { mutableStateOf<String?>(null) }
     var showDeleteConfirm by remember { mutableStateOf(false) }
+    var showRefillDialog by remember { mutableStateOf(false) }
+    var showAdjustDialog by remember { mutableStateOf(false) }
 
     LaunchedEffect(uiState.itemDeleted) {
         if (uiState.itemDeleted) {
@@ -217,6 +221,57 @@ fun ItemDetailScreen(
                 }
             }
 
+            // Stock & Refills Card
+            item {
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(
+                        containerColor = if (uiState.isLowStock) MaterialTheme.colorScheme.errorContainer else MaterialTheme.colorScheme.surfaceVariant
+                    )
+                ) {
+                    Column(modifier = Modifier.padding(16.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                Icons.Default.Inventory,
+                                contentDescription = null,
+                                tint = if (uiState.isLowStock) MaterialTheme.colorScheme.onErrorContainer else MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                text = "Stock & Refills",
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = if (uiState.isLowStock) MaterialTheme.colorScheme.onErrorContainer else MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        Spacer(modifier = Modifier.height(6.dp))
+                        Text(
+                            text = uiState.stockStatusText ?: "No stock tracked yet",
+                            style = MaterialTheme.typography.bodyLarge,
+                            fontWeight = FontWeight.SemiBold,
+                            color = if (uiState.isLowStock) MaterialTheme.colorScheme.onErrorContainer else MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        if (uiState.isLowStock) {
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Text(
+                                text = "Running low! Refill soon.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onErrorContainer
+                            )
+                        }
+                        Spacer(modifier = Modifier.height(12.dp))
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Button(onClick = { showRefillDialog = true }) {
+                                Text("Refilled +N")
+                            }
+                            OutlinedButton(onClick = { showAdjustDialog = true }) {
+                                Text("Set Stock")
+                            }
+                        }
+                    }
+                }
+            }
+
             // Occurrence History (last 30)
             item {
                 Text(
@@ -317,6 +372,91 @@ fun ItemDetailScreen(
             },
             dismissButton = {
                 OutlinedButton(onClick = { showDeleteConfirm = false }) {
+                    Text("Cancel")
+                }
+            }
+        )
+    }
+
+    if (showRefillDialog) {
+        var refillAmountText by remember { mutableStateOf("30") }
+        AlertDialog(
+            onDismissRequest = { showRefillDialog = false },
+            title = { Text("Record Refill") },
+            text = {
+                Column {
+                    Text("Add units/tablets to current stock:")
+                    Spacer(modifier = Modifier.height(8.dp))
+                    OutlinedTextField(
+                        value = refillAmountText,
+                        onValueChange = { refillAmountText = it },
+                        label = { Text("Amount added") },
+                        singleLine = true
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        listOf(10, 30, 60).forEach { quickAmount ->
+                            SuggestionChip(
+                                onClick = { refillAmountText = quickAmount.toString() },
+                                label = { Text("+$quickAmount") }
+                            )
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        val amount = refillAmountText.toDoubleOrNull()
+                        if (amount != null && amount > 0) {
+                            onRefillClick(amount)
+                            showRefillDialog = false
+                        }
+                    }
+                ) {
+                    Text("Add Refill")
+                }
+            },
+            dismissButton = {
+                OutlinedButton(onClick = { showRefillDialog = false }) {
+                    Text("Cancel")
+                }
+            }
+        )
+    }
+
+    if (showAdjustDialog) {
+        var adjustAmountText by remember { mutableStateOf(uiState.currentStock?.toInt()?.toString() ?: "0") }
+        AlertDialog(
+            onDismissRequest = { showAdjustDialog = false },
+            title = { Text("Set Stock") },
+            text = {
+                Column {
+                    Text("Set current actual count of units/tablets:")
+                    Spacer(modifier = Modifier.height(8.dp))
+                    OutlinedTextField(
+                        value = adjustAmountText,
+                        onValueChange = { adjustAmountText = it },
+                        label = { Text("Total units now") },
+                        singleLine = true
+                    )
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        val target = adjustAmountText.toDoubleOrNull()
+                        if (target != null && target >= 0) {
+                            onAdjustClick(target)
+                            showAdjustDialog = false
+                        }
+                    }
+                ) {
+                    Text("Set")
+                }
+            },
+            dismissButton = {
+                OutlinedButton(onClick = { showAdjustDialog = false }) {
                     Text("Cancel")
                 }
             }

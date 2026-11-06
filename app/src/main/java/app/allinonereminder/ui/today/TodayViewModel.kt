@@ -8,10 +8,12 @@ import androidx.lifecycle.viewModelScope
 import app.allinonereminder.alarm.AlarmCoordinator
 import app.allinonereminder.alarm.AlarmNotificationHelper
 import app.allinonereminder.alarm.AlarmRingService
+import app.allinonereminder.alarm.RefillAlertNotifier
 import app.allinonereminder.data.local.ChangeLogWriter
 import app.allinonereminder.data.repository.*
 import app.allinonereminder.model.*
 import app.allinonereminder.schedule.SchedulingEngine
+import app.allinonereminder.schedule.StockCalculator
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -29,7 +31,8 @@ data class OccurrenceUiModel(
     val item: Item,
     val profile: Profile?,
     val schedule: Schedule?,
-    val photoId: String? = null
+    val photoId: String? = null,
+    val stockStatus: String? = null
 )
 
 /** An as-needed (PRN) item shown in its own Today section, with no planned dose times. */
@@ -39,7 +42,8 @@ data class AsNeededUiModel(
     val schedule: Schedule,
     val takenToday: Int,
     val maxPerDay: Int?,
-    val canTake: Boolean
+    val canTake: Boolean,
+    val stockStatus: String? = null
 )
 
 
@@ -77,7 +81,9 @@ class TodayViewModel @Inject constructor(
     private val mealSessionRepository: MealSessionRepository,
     private val settingsRepository: SettingsRepository,
     private val changeLogWriter: ChangeLogWriter,
-    private val alarmCoordinator: AlarmCoordinator
+    private val alarmCoordinator: AlarmCoordinator,
+    private val stockEventRepository: StockEventRepository? = null,
+    private val refillAlertNotifier: RefillAlertNotifier? = null
 ) : ViewModel() {
 
     private val _selectedProfileId = MutableStateFlow<String?>(null)
@@ -123,7 +129,8 @@ class TodayViewModel @Inject constructor(
         settingsRepository.lastRescheduleErrorFlow,
         scheduleRepository.getAllActiveSchedules(),
         _asNeededWarning,
-        _asNeededLimitItem
+        _asNeededLimitItem,
+        stockEventRepository?.getAllCurrentStocksFlow() ?: flowOf(emptyMap<String, Double>())
     ) { args ->
         @Suppress("UNCHECKED_CAST")
         val profiles = args[0] as List<Profile>
@@ -139,9 +146,14 @@ class TodayViewModel @Inject constructor(
         val allSchedules = args[7] as List<Schedule>
         val asNeededWarning = args[8] as AsNeededUiModel?
         val asNeededLimitItem = args[9] as AsNeededUiModel?
+        @Suppress("UNCHECKED_CAST")
+        val stockMap = args[10] as Map<String, Double>
         val itemMap = allItems.associateBy { it.id }
         val profileMap = profiles.associateBy { it.id }
         val scheduleMap = allSchedules.associateBy { it.id }
+
+        val nowInstant = Instant.now()
+        val plannedCountsByItem = StockCalculator.plan14DaysCounts(allItems, allSchedules, emptyList(), nowInstant)
 
         val filteredOccs = todayOccurrences
             .filter { occ ->
@@ -151,12 +163,17 @@ class TodayViewModel @Inject constructor(
             .mapNotNull { occ ->
                 val item = itemMap[occ.itemId] ?: return@mapNotNull null
                 val prof = profileMap[occ.profileId]
+                val currentStock = stockMap[item.id]
+                val stockStatus = if (currentStock != null) {
+                    StockCalculator.formatStockStatus(currentStock, item.unitsPerDose, plannedCountsByItem[item.id] ?: 0)
+                } else null
                 OccurrenceUiModel(
                     occurrence = occ,
                     item = item,
                     profile = prof,
                     schedule = scheduleMap[occ.scheduleId],
-                    photoId = null
+                    photoId = null,
+                    stockStatus = stockStatus
                 )
             }
 
@@ -173,13 +190,18 @@ class TodayViewModel @Inject constructor(
                     it.itemId == item.id && it.status == OccurrenceStatus.TAKEN
                 }
                 val maxPerDay = item.maxPerDay
+                val currentStock = stockMap[item.id]
+                val stockStatus = if (currentStock != null) {
+                    StockCalculator.formatStockStatus(currentStock, item.unitsPerDose, plannedCountsByItem[item.id] ?: 0)
+                } else null
                 AsNeededUiModel(
                     item = item,
                     profile = profileMap[item.profileId],
                     schedule = sched,
                     takenToday = takenToday,
                     maxPerDay = maxPerDay,
-                    canTake = maxPerDay == null || takenToday < maxPerDay
+                    canTake = maxPerDay == null || takenToday < maxPerDay,
+                    stockStatus = stockStatus
                 )
             }
 
@@ -232,13 +254,8 @@ class TodayViewModel @Inject constructor(
             // Stop ringing service if item was ringing
             AlarmRingService.stopForOccurrence(context, occ.id)
 
-            occurrenceRepository.updateOccurrence(
-                occ.copy(
-                    status = OccurrenceStatus.TAKEN,
-                    actedAt = now,
-                    updatedAt = now
-                )
-            )
+            occurrenceRepository.markOccurrenceTaken(occ.id, now)
+            refillAlertNotifier?.checkAndNotify(occ.itemId)
             alarmCoordinator.reschedule("taken_from_today")
         }
     }
@@ -284,23 +301,21 @@ class TodayViewModel @Inject constructor(
             _asNeededWarning.value = null
             _asNeededLimitItem.value = null
             val deviceId = settingsRepository.getOrCreateDeviceId()
-            occurrenceRepository.upsertOccurrences(
-                listOf(
-                    Occurrence(
-                        id = UUID.randomUUID().toString(),
-                        itemId = item.id,
-                        scheduleId = asNeeded.schedule.id,
-                        profileId = item.profileId,
-                        plannedAt = now,
-                        dueAt = now,
-                        remindAt = now,
-                        status = OccurrenceStatus.TAKEN,
-                        actedAt = now,
-                        deviceId = deviceId,
-                        updatedAt = now
-                    )
-                )
+            val newOcc = Occurrence(
+                id = UUID.randomUUID().toString(),
+                itemId = item.id,
+                scheduleId = asNeeded.schedule.id,
+                profileId = item.profileId,
+                plannedAt = now,
+                dueAt = now,
+                remindAt = now,
+                status = OccurrenceStatus.TAKEN,
+                actedAt = now,
+                deviceId = deviceId,
+                updatedAt = now
             )
+            occurrenceRepository.recordAsNeededTaken(newOcc, now)
+            refillAlertNotifier?.checkAndNotify(item.id)
             alarmCoordinator.reschedule("taken_as_needed")
         }
     }

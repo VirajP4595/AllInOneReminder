@@ -12,6 +12,7 @@ import app.allinonereminder.data.local.dao.MealSessionDao
 import app.allinonereminder.data.local.dao.OccurrenceDao
 import app.allinonereminder.data.local.dao.ProfileDao
 import app.allinonereminder.data.local.dao.ScheduleDao
+import app.allinonereminder.data.local.dao.StockEventDao
 import app.allinonereminder.data.local.entity.ChangeLogEntity
 import app.allinonereminder.data.local.entity.ItemEntity
 import app.allinonereminder.data.local.entity.ItemPhotoEntity
@@ -20,6 +21,7 @@ import app.allinonereminder.data.local.entity.MealSessionEntity
 import app.allinonereminder.data.local.entity.OccurrenceEntity
 import app.allinonereminder.data.local.entity.ProfileEntity
 import app.allinonereminder.data.local.entity.ScheduleEntity
+import app.allinonereminder.data.local.entity.StockEventEntity
 
 @Database(
     entities = [
@@ -30,9 +32,10 @@ import app.allinonereminder.data.local.entity.ScheduleEntity
         ScheduleEntity::class,
         OccurrenceEntity::class,
         MealSessionEntity::class,
-        ChangeLogEntity::class
+        ChangeLogEntity::class,
+        StockEventEntity::class
     ],
-    version = 3,
+    version = 4,
     exportSchema = true
 )
 @TypeConverters(RoomConverters::class)
@@ -45,5 +48,6 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun occurrenceDao(): OccurrenceDao
     abstract fun mealSessionDao(): MealSessionDao
     abstract fun changeLogDao(): ChangeLogDao
+    abstract fun stockEventDao(): StockEventDao
 }
 

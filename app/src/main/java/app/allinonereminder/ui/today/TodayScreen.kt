@@ -545,6 +545,13 @@ private fun OccurrenceTimelineCard(
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
+                    if (uiModel.stockStatus != null) {
+                        Text(
+                            text = uiModel.stockStatus,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
 
                     if (showProfileBadge && uiModel.profile != null) {
                         Spacer(modifier = Modifier.height(4.dp))
@@ -665,6 +672,13 @@ private fun AsNeededCard(
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
+            if (uiModel.stockStatus != null) {
+                Text(
+                    text = uiModel.stockStatus,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
             if (showProfileBadge && uiModel.profile != null) {
                 Spacer(modifier = Modifier.height(4.dp))
                 Row(verticalAlignment = Alignment.CenterVertically) {

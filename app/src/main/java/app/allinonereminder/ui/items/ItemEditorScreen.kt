@@ -47,6 +47,9 @@ fun ItemEditorScreen(
     onReRingMinutesChange: (Int) -> Unit = {},
     onMinGapMinutesChange: (Int) -> Unit = {},
     onMaxPerDayChange: (String) -> Unit = {},
+    onCurrentStockChange: (String) -> Unit = {},
+    onUnitsPerDoseChange: (String) -> Unit = {},
+    onRefillThresholdChange: (String) -> Unit = {},
     onAddSchedule: () -> Unit = {},
     onRemoveSchedule: (String) -> Unit = {},
     onUpdateSchedule: (String, (ScheduleDraft) -> ScheduleDraft) -> Unit = { _, _ -> },
@@ -221,6 +224,40 @@ fun ItemEditorScreen(
                 maxLines = 3,
                 modifier = Modifier.fillMaxWidth()
             )
+
+            // Stock & Refill Tracking
+            if (uiState.type in listOf(ItemType.MEDICINE, ItemType.INJECTION, ItemType.SUPPLEMENT, ItemType.WATER_DRINK)) {
+                Text("Stock & Refill Tracking", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    OutlinedTextField(
+                        value = uiState.currentStock,
+                        onValueChange = onCurrentStockChange,
+                        label = { Text("Current Stock") },
+                        placeholder = { Text("e.g. 30") },
+                        modifier = Modifier.weight(1f),
+                        singleLine = true
+                    )
+                    OutlinedTextField(
+                        value = uiState.unitsPerDose,
+                        onValueChange = onUnitsPerDoseChange,
+                        label = { Text("Units / Dose") },
+                        placeholder = { Text("1.0") },
+                        modifier = Modifier.weight(1f),
+                        singleLine = true
+                    )
+                    OutlinedTextField(
+                        value = uiState.refillThreshold,
+                        onValueChange = onRefillThresholdChange,
+                        label = { Text("Refill Alert At") },
+                        placeholder = { Text("e.g. 5") },
+                        modifier = Modifier.weight(1f),
+                        singleLine = true
+                    )
+                }
+            }
 
             // Criticality
             Text("Criticality", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)

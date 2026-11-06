@@ -53,6 +53,9 @@ class NotificationActionReceiver : BroadcastReceiver() {
     @Inject
     lateinit var alarmCoordinator: AlarmCoordinator
 
+    @Inject
+    lateinit var refillAlertNotifier: RefillAlertNotifier
+
     private val scope = CoroutineScope(Dispatchers.Default + SupervisorJob())
 
     override fun onReceive(context: Context, intent: Intent) {
@@ -142,13 +145,8 @@ class NotificationActionReceiver : BroadcastReceiver() {
 
                 // No warning: mark all taken
                 for (occ in occurrences) {
-                    occurrenceRepository.updateOccurrence(
-                        occ.copy(
-                            status = OccurrenceStatus.TAKEN,
-                            actedAt = now.toEpochMilli(),
-                            updatedAt = now.toEpochMilli()
-                        )
-                    )
+                    occurrenceRepository.markOccurrenceTaken(occ.id, now.toEpochMilli())
+                    refillAlertNotifier.checkAndNotify(occ.itemId)
                 }
                 stopService(context)
                 alarmCoordinator.reschedule("NotificationAction: Taken")

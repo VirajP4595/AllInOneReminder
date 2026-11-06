@@ -13,6 +13,7 @@ import app.allinonereminder.model.MealType
 import app.allinonereminder.model.OccurrenceStatus
 import app.allinonereminder.model.RecurrenceType
 import app.allinonereminder.model.ScheduleAnchorType
+import app.allinonereminder.model.StockEventReason
 import app.allinonereminder.model.TimePolicy
 
 @Entity(
@@ -94,6 +95,8 @@ data class ItemEntity(
     val endDate: String? = null,
     val exerciseTargetMinutes: Int? = null,
     val maxPerDay: Int? = null,
+    val unitsPerDose: Double? = 1.0,
+    val refillThreshold: Double? = null,
     val active: Boolean = true,
     val createdAt: Long,
     val updatedAt: Long,
@@ -234,4 +237,28 @@ data class ChangeLogEntity(
     val changedAt: Long,
     val deviceId: String
 )
+
+@Entity(
+    tableName = "stock_event",
+    indices = [
+        Index("itemId")
+    ],
+    foreignKeys = [
+        ForeignKey(
+            entity = ItemEntity::class,
+            parentColumns = ["id"],
+            childColumns = ["itemId"],
+            onDelete = ForeignKey.CASCADE
+        )
+    ]
+)
+data class StockEventEntity(
+    @PrimaryKey val id: String,
+    val itemId: String,
+    val delta: Double,
+    val reason: StockEventReason,
+    val occurrenceId: String? = null,
+    val createdAt: Long
+)
+
 

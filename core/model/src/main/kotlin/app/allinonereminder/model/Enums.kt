@@ -78,3 +78,9 @@ enum class SkipReason(val title: String) {
     OTHER("Other")
 }
 
+
+enum class StockEventReason {
+    TAKEN,
+    REFILL,
+    ADJUST
+}

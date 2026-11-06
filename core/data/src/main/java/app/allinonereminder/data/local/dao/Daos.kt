@@ -14,6 +14,7 @@ import app.allinonereminder.data.local.entity.MealSessionEntity
 import app.allinonereminder.data.local.entity.OccurrenceEntity
 import app.allinonereminder.data.local.entity.ProfileEntity
 import app.allinonereminder.data.local.entity.ScheduleEntity
+import app.allinonereminder.data.local.entity.StockEventEntity
 import app.allinonereminder.model.MealType
 import app.allinonereminder.model.OccurrenceStatus
 import kotlinx.coroutines.flow.Flow
@@ -142,6 +143,9 @@ interface ItemPhotoDao {
 interface ScheduleDao {
     @Query("SELECT * FROM schedule WHERE itemId = :itemId AND deletedAt IS NULL")
     fun getActiveByItemId(itemId: String): Flow<List<ScheduleEntity>>
+
+    @Query("SELECT * FROM schedule WHERE itemId = :itemId AND deletedAt IS NULL")
+    suspend fun getActiveByItemIdSync(itemId: String): List<ScheduleEntity>
 
     @Query("SELECT * FROM schedule WHERE deletedAt IS NULL")
     fun getAllActive(): Flow<List<ScheduleEntity>>
@@ -288,6 +292,47 @@ interface ChangeLogDao {
     suspend fun getAllSync(): List<ChangeLogEntity>
 
     @Query("DELETE FROM change_log")
+    suspend fun deleteAll()
+}
+
+data class ItemStock(
+    val itemId: String,
+    val stock: Double
+)
+
+@Dao
+interface StockEventDao {
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
+    suspend fun insert(event: StockEventEntity): Long
+
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
+    fun insertSync(event: StockEventEntity): Long
+
+    @Query("SELECT COALESCE(SUM(delta), 0.0) FROM stock_event WHERE itemId = :itemId")
+    fun getCurrentStockFlow(itemId: String): Flow<Double>
+
+    @Query("SELECT COALESCE(SUM(delta), 0.0) FROM stock_event WHERE itemId = :itemId")
+    suspend fun getCurrentStock(itemId: String): Double
+
+    @Query("SELECT itemId, COALESCE(SUM(delta), 0.0) as stock FROM stock_event GROUP BY itemId")
+    fun getAllCurrentStocksFlow(): Flow<List<ItemStock>>
+
+    @Query("SELECT COUNT(*) FROM stock_event WHERE itemId = :itemId")
+    suspend fun countEventsForItem(itemId: String): Int
+
+    @Query("SELECT * FROM stock_event WHERE itemId = :itemId ORDER BY createdAt DESC")
+    fun getEventsForItemFlow(itemId: String): Flow<List<StockEventEntity>>
+
+    @Query("SELECT * FROM stock_event WHERE itemId = :itemId ORDER BY createdAt DESC")
+    suspend fun getEventsForItem(itemId: String): List<StockEventEntity>
+
+    @Query("SELECT * FROM stock_event ORDER BY createdAt ASC")
+    suspend fun getAllStockEvents(): List<StockEventEntity>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertAll(events: List<StockEventEntity>)
+
+    @Query("DELETE FROM stock_event")
     suspend fun deleteAll()
 }
 

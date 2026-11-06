@@ -608,6 +608,51 @@ class BackupManagerTest {
         assertThat(restoredSchedule.doseAmountOverride).isNull()
     }
 
+    @Test
+    fun backupAndRestore_roundtripsStockEventsAndItemStockColumns() = runBlocking {
+        val passphrase = "StockPassword123".toCharArray()
+        val now = System.currentTimeMillis()
+
+        val profile = ProfileEntity(id = "prof-stock", name = "Mom", colorArgb = 0xFF00FF, createdAt = now, updatedAt = now, deletedAt = null)
+        db.profileDao().insert(profile)
+
+        val item = ItemEntity(
+            id = "item-stock", profileId = "prof-stock", type = ItemType.MEDICINE, name = "Metformin",
+            dosageAmount = "500", dosageUnit = "mg", criticality = Criticality.NORMAL,
+            graceMinutes = 60, reRingMinutes = 5, timePolicy = TimePolicy.LOCAL_WALL_CLOCK,
+            homeZoneId = "UTC", startDate = "2026-01-01",
+            unitsPerDose = 0.5, refillThreshold = 5.0,
+            active = true, createdAt = now, updatedAt = now
+        )
+        db.itemDao().insert(item)
+
+        val event1 = StockEventEntity("se-1", "item-stock", 30.0, StockEventReason.REFILL, null, now)
+        val event2 = StockEventEntity("se-2", "item-stock", -0.5, StockEventReason.TAKEN, "occ-1", now + 1)
+        db.stockEventDao().insert(event1)
+        db.stockEventDao().insert(event2)
+
+        val backupBaos = ByteArrayOutputStream()
+        backupManager.createBackup(backupBaos, passphrase)
+
+        // Clear DB
+        db.stockEventDao().deleteAll()
+        db.itemDao().deleteAll()
+        db.profileDao().deleteAll()
+
+        // Restore
+        backupManager.restoreBackup(ByteArrayInputStream(backupBaos.toByteArray()), passphrase)
+
+        val restoredItem = db.itemDao().getAllSync().single()
+        assertThat(restoredItem.name).isEqualTo("Metformin")
+        assertThat(restoredItem.unitsPerDose).isEqualTo(0.5)
+        assertThat(restoredItem.refillThreshold).isEqualTo(5.0)
+
+        val restoredEvents = db.stockEventDao().getAllStockEvents()
+        assertThat(restoredEvents).hasSize(2)
+        val currentStock = db.stockEventDao().getCurrentStock("item-stock")
+        assertThat(currentStock).isEqualTo(29.5)
+    }
+
     /** Builds an encrypted backup archive the same way [BackupManager.createBackup] does. */
     private fun encryptBackupJson(json: String, passphrase: CharArray): ByteArray {
         val zipBaos = ByteArrayOutputStream()

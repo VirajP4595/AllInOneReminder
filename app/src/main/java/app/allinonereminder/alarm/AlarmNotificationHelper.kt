@@ -20,6 +20,7 @@ object AlarmNotificationHelper {
     const val CHANNEL_NORMAL = "alarms_normal"
     const val CHANNEL_GENTLE = "alarms_gentle"
     const val CHANNEL_MEAL = "meal_session"
+    const val CHANNEL_REFILL = "refill_reminders"
 
     const val NOTIFICATION_ID_RINGING = 2001
     const val NOTIFICATION_ID_MEAL = 2002
@@ -93,7 +94,16 @@ object AlarmNotificationHelper {
                 description = "Ongoing notification while having a meal"
             }
 
-            nm.createNotificationChannels(listOf(criticalChannel, normalChannel, gentleChannel, mealChannel))
+            // Refill reminders channel
+            val refillChannel = NotificationChannel(
+                CHANNEL_REFILL,
+                "Refill Reminders",
+                NotificationManager.IMPORTANCE_DEFAULT
+            ).apply {
+                description = "Reminders when medicine stock is running low"
+            }
+
+            nm.createNotificationChannels(listOf(criticalChannel, normalChannel, gentleChannel, mealChannel, refillChannel))
         }
     }
 
