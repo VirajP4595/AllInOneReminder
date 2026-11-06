@@ -347,7 +347,7 @@ class ItemEditorViewModel @Inject constructor(
             if (state.currentStock.isNotBlank()) {
                 val enteredStock = state.currentStock.toDoubleOrNull()
                 if (enteredStock != null) {
-                    stockEventRepository.adjustStock(item.id, enteredStock, now)
+                    stockEventRepository?.adjustStock(item.id, enteredStock, now)
                 }
             }
 

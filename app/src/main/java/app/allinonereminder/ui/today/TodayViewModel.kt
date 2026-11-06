@@ -130,7 +130,7 @@ class TodayViewModel @Inject constructor(
         scheduleRepository.getAllActiveSchedules(),
         _asNeededWarning,
         _asNeededLimitItem,
-        stockEventRepository?.getAllCurrentStocksFlow() ?: flowOf(emptyMap())
+        stockEventRepository?.getAllCurrentStocksFlow() ?: flowOf(emptyMap<String, Double>())
     ) { args ->
         @Suppress("UNCHECKED_CAST")
         val profiles = args[0] as List<Profile>
