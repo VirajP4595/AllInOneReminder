@@ -384,6 +384,7 @@ class BackupManager @Inject constructor(
                 put("timePolicy", item.timePolicy.name)
                 put("homeZoneId", item.homeZoneId)
                 put("startDate", item.startDate)
+                putOpt("maxPerDay", item.maxPerDay)
                 put("createdAt", item.createdAt)
                 put("updatedAt", item.updatedAt)
                 putOpt("deletedAt", item.deletedAt)
@@ -412,6 +413,7 @@ class BackupManager @Inject constructor(
                     timePolicy = TimePolicy.valueOf(o.getString("timePolicy")),
                     homeZoneId = o.getString("homeZoneId"),
                     startDate = o.getString("startDate"),
+                    maxPerDay = if (o.isNull("maxPerDay")) null else o.getInt("maxPerDay"),
                     createdAt = o.getLong("createdAt"),
                     updatedAt = o.getLong("updatedAt"),
                     deletedAt = if (o.isNull("deletedAt")) null else o.getLong("deletedAt")
@@ -477,6 +479,14 @@ class BackupManager @Inject constructor(
                 putOpt("intervalN", s.intervalN)
                 put("anchorDate", s.anchorDate)
                 putOpt("onceDate", s.onceDate)
+                putOpt("dayOfMonth", s.dayOfMonth)
+                putOpt("nthWeek", s.nthWeek)
+                putOpt("intervalHours", s.intervalHours)
+                putOpt("windowStartMinute", s.windowStartMinute)
+                putOpt("windowEndMinute", s.windowEndMinute)
+                putOpt("validFrom", s.validFrom)
+                putOpt("validUntil", s.validUntil)
+                putOpt("doseAmountOverride", s.doseAmountOverride)
                 put("createdAt", s.createdAt)
                 put("updatedAt", s.updatedAt)
                 putOpt("deletedAt", s.deletedAt)
@@ -503,6 +513,14 @@ class BackupManager @Inject constructor(
                     intervalN = if (o.isNull("intervalN")) null else o.getInt("intervalN"),
                     anchorDate = o.getString("anchorDate"),
                     onceDate = if (o.isNull("onceDate")) null else o.getString("onceDate"),
+                    dayOfMonth = if (o.isNull("dayOfMonth")) null else o.getInt("dayOfMonth"),
+                    nthWeek = if (o.isNull("nthWeek")) null else o.getInt("nthWeek"),
+                    intervalHours = if (o.isNull("intervalHours")) null else o.getInt("intervalHours"),
+                    windowStartMinute = if (o.isNull("windowStartMinute")) null else o.getInt("windowStartMinute"),
+                    windowEndMinute = if (o.isNull("windowEndMinute")) null else o.getInt("windowEndMinute"),
+                    validFrom = if (o.isNull("validFrom")) null else o.getString("validFrom"),
+                    validUntil = if (o.isNull("validUntil")) null else o.getString("validUntil"),
+                    doseAmountOverride = if (o.isNull("doseAmountOverride")) null else o.getString("doseAmountOverride"),
                     createdAt = o.getLong("createdAt"),
                     updatedAt = o.getLong("updatedAt"),
                     deletedAt = if (o.isNull("deletedAt")) null else o.getLong("deletedAt")

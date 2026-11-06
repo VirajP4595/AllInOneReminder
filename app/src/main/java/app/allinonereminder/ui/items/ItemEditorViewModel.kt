@@ -28,7 +28,18 @@ data class ScheduleDraft(
     var relation: MealRelation? = MealRelation.WITH,
     var offsetMinutes: Int? = 0,
     var recurrence: RecurrenceType = RecurrenceType.DAILY,
-    var intervalN: Int? = 1
+    var intervalN: Int? = 1,
+    var weekdayMask: Int? = null,
+    var dayOfMonth: Int = 1,
+    var monthlyByWeekday: Boolean = false,
+    var nthWeek: Int = 1,
+    var intervalHours: Int = 4,
+    var windowStartMinute: Int = 8 * 60,
+    var windowEndMinute: Int = 20 * 60,
+    var onceDate: String? = null,
+    var validFrom: String? = null,
+    var validUntil: String? = null,
+    var doseAmountOverride: String? = null
 )
 
 data class ItemEditorUiState(
@@ -51,6 +62,7 @@ data class ItemEditorUiState(
     val graceMinutes: Int = 60,
     val reRingMinutes: Int = 5,
     val minGapMinutes: Int = 240,
+    val maxPerDay: Int? = null,
     val schedules: List<ScheduleDraft> = listOf(ScheduleDraft()),
     val photos: List<ItemPhoto> = emptyList(),
     val isSaving: Boolean = false,
@@ -104,6 +116,7 @@ class ItemEditorViewModel @Inject constructor(
                             graceMinutes = item.graceMinutes,
                             reRingMinutes = item.reRingMinutes,
                             minGapMinutes = item.minGapMinutes ?: 240,
+                            maxPerDay = item.maxPerDay,
                             schedules = scheds.map { s ->
                                 ScheduleDraft(
                                     id = s.id,
@@ -113,7 +126,18 @@ class ItemEditorViewModel @Inject constructor(
                                     relation = s.relation,
                                     offsetMinutes = s.offsetMinutes,
                                     recurrence = s.recurrence,
-                                    intervalN = s.intervalN
+                                    intervalN = s.intervalN,
+                                    weekdayMask = s.weekdayMask,
+                                    dayOfMonth = s.dayOfMonth ?: 1,
+                                    monthlyByWeekday = s.nthWeek != null,
+                                    nthWeek = s.nthWeek ?: 1,
+                                    intervalHours = s.intervalHours ?: 4,
+                                    windowStartMinute = s.windowStartMinute ?: (s.minuteOfDay ?: (8 * 60)),
+                                    windowEndMinute = s.windowEndMinute ?: (20 * 60),
+                                    onceDate = s.onceDate,
+                                    validFrom = s.validFrom,
+                                    validUntil = s.validUntil,
+                                    doseAmountOverride = s.doseAmountOverride
                                 )
                             }.ifEmpty { listOf(ScheduleDraft()) },
                             photos = photos
@@ -145,6 +169,9 @@ class ItemEditorViewModel @Inject constructor(
     fun updateGraceMinutes(m: Int) = _uiState.update { it.copy(graceMinutes = m) }
     fun updateReRingMinutes(m: Int) = _uiState.update { it.copy(reRingMinutes = m) }
     fun updateMinGapMinutes(m: Int) = _uiState.update { it.copy(minGapMinutes = m) }
+    fun updateMaxPerDay(value: String) = _uiState.update {
+        it.copy(maxPerDay = value.toIntOrNull()?.takeIf { n -> n > 0 })
+    }
 
     fun addSchedule() {
         _uiState.update { it.copy(schedules = it.schedules + ScheduleDraft()) }
@@ -219,6 +246,7 @@ class ItemEditorViewModel @Inject constructor(
                 graceMinutes = state.graceMinutes,
                 reRingMinutes = state.reRingMinutes,
                 minGapMinutes = state.minGapMinutes,
+                maxPerDay = state.maxPerDay,
                 createdAt = now,
                 updatedAt = now
             )
@@ -247,8 +275,48 @@ class ItemEditorViewModel @Inject constructor(
                     relation = if (draft.anchorType == ScheduleAnchorType.MEAL) draft.relation else null,
                     offsetMinutes = if (draft.anchorType == ScheduleAnchorType.MEAL) draft.offsetMinutes else null,
                     recurrence = draft.recurrence,
-                    intervalN = if (draft.recurrence == RecurrenceType.EVERY_N_DAYS || draft.recurrence == RecurrenceType.EVERY_N_WEEKS) draft.intervalN else null,
+                    weekdayMask = when (draft.recurrence) {
+                        RecurrenceType.EVERY_N_WEEKS -> draft.weekdayMask ?: 127
+                        RecurrenceType.MONTHLY -> if (draft.monthlyByWeekday) {
+                            draft.weekdayMask?.takeIf { it != 0 } ?: 2
+                        } else {
+                            null
+                        }
+                        else -> null
+                    },
+                    intervalN = if (draft.recurrence == RecurrenceType.EVERY_N_DAYS ||
+                        draft.recurrence == RecurrenceType.EVERY_N_WEEKS
+                    ) {
+                        draft.intervalN?.coerceAtLeast(1) ?: 1
+                    } else {
+                        null
+                    },
                     anchorDate = state.startDate,
+                    onceDate = if (draft.recurrence == RecurrenceType.ONCE) {
+                        draft.onceDate ?: state.startDate
+                    } else {
+                        null
+                    },
+                    dayOfMonth = if (draft.recurrence == RecurrenceType.MONTHLY && !draft.monthlyByWeekday) {
+                        draft.dayOfMonth.coerceIn(1, 31)
+                    } else {
+                        null
+                    },
+                    nthWeek = if (draft.recurrence == RecurrenceType.MONTHLY && draft.monthlyByWeekday) {
+                        draft.nthWeek.coerceIn(1, 5)
+                    } else {
+                        null
+                    },
+                    intervalHours = if (draft.recurrence == RecurrenceType.INTERVAL) {
+                        draft.intervalHours.coerceAtLeast(1)
+                    } else {
+                        null
+                    },
+                    windowStartMinute = if (draft.recurrence == RecurrenceType.INTERVAL) draft.windowStartMinute else null,
+                    windowEndMinute = if (draft.recurrence == RecurrenceType.INTERVAL) draft.windowEndMinute else null,
+                    validFrom = draft.validFrom?.takeIf { it.isNotBlank() },
+                    validUntil = draft.validUntil?.takeIf { it.isNotBlank() },
+                    doseAmountOverride = draft.doseAmountOverride?.takeIf { it.isNotBlank() },
                     createdAt = now,
                     updatedAt = now
                 )

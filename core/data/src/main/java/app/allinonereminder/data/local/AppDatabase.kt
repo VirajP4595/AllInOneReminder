@@ -32,7 +32,7 @@ import app.allinonereminder.data.local.entity.ScheduleEntity
         MealSessionEntity::class,
         ChangeLogEntity::class
     ],
-    version = 2,
+    version = 3,
     exportSchema = true
 )
 @TypeConverters(RoomConverters::class)

@@ -11,14 +11,17 @@ import app.allinonereminder.alarm.AlarmRingService
 import app.allinonereminder.data.local.ChangeLogWriter
 import app.allinonereminder.data.repository.*
 import app.allinonereminder.model.*
+import app.allinonereminder.schedule.SchedulingEngine
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
+import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
+import java.util.UUID
 import javax.inject.Inject
 
 data class OccurrenceUiModel(
@@ -27,6 +30,16 @@ data class OccurrenceUiModel(
     val profile: Profile?,
     val schedule: Schedule?,
     val photoId: String? = null
+)
+
+/** An as-needed (PRN) item shown in its own Today section, with no planned dose times. */
+data class AsNeededUiModel(
+    val item: Item,
+    val profile: Profile?,
+    val schedule: Schedule,
+    val takenToday: Int,
+    val maxPerDay: Int?,
+    val canTake: Boolean
 )
 
 
@@ -47,6 +60,9 @@ data class TodayUiState(
     val exactAlarmsDenied: Boolean = false,
     val rescheduleError: String? = null,
     val activeMealSession: MealSession? = null,
+    val asNeededItems: List<AsNeededUiModel> = emptyList(),
+    val asNeededWarning: AsNeededUiModel? = null,
+    val asNeededLimitItem: AsNeededUiModel? = null,
     val isLoading: Boolean = true
 )
 
@@ -67,6 +83,9 @@ class TodayViewModel @Inject constructor(
     private val _selectedProfileId = MutableStateFlow<String?>(null)
     private val _doubleDoseWarning = MutableStateFlow<OccurrenceUiModel?>(null)
     val doubleDoseWarning: StateFlow<OccurrenceUiModel?> = _doubleDoseWarning.asStateFlow()
+    private val _asNeededWarning = MutableStateFlow<AsNeededUiModel?>(null)
+    val asNeededWarning: StateFlow<AsNeededUiModel?> = _asNeededWarning.asStateFlow()
+    private val _asNeededLimitItem = MutableStateFlow<AsNeededUiModel?>(null)
 
     // Ticking flow deriving today's start and end window, re-evaluating across midnight and timezone changes
     val todayWindowFlow: Flow<Pair<Long, Long>> = flow {
@@ -101,7 +120,10 @@ class TodayViewModel @Inject constructor(
         itemRepository.getActiveItems(),
         _doubleDoseWarning,
         activeMealSessionFlow,
-        settingsRepository.lastRescheduleErrorFlow
+        settingsRepository.lastRescheduleErrorFlow,
+        scheduleRepository.getAllActiveSchedules(),
+        _asNeededWarning,
+        _asNeededLimitItem
     ) { args ->
         @Suppress("UNCHECKED_CAST")
         val profiles = args[0] as List<Profile>
@@ -113,8 +135,13 @@ class TodayViewModel @Inject constructor(
         val warningOcc = args[4] as OccurrenceUiModel?
         val activeSession = args[5] as MealSession?
         val rescheduleError = args[6] as String?
+        @Suppress("UNCHECKED_CAST")
+        val allSchedules = args[7] as List<Schedule>
+        val asNeededWarning = args[8] as AsNeededUiModel?
+        val asNeededLimitItem = args[9] as AsNeededUiModel?
         val itemMap = allItems.associateBy { it.id }
         val profileMap = profiles.associateBy { it.id }
+        val scheduleMap = allSchedules.associateBy { it.id }
 
         val filteredOccs = todayOccurrences
             .filter { occ ->
@@ -128,8 +155,31 @@ class TodayViewModel @Inject constructor(
                     occurrence = occ,
                     item = item,
                     profile = prof,
-                    schedule = null,
+                    schedule = scheduleMap[occ.scheduleId],
                     photoId = null
+                )
+            }
+
+        // As-needed items have no planned occurrences. Show one card per PRN schedule, with the
+        // number of doses already taken today so the daily cap can be enforced in the UI.
+        val asNeededItems = allSchedules
+            .filter { it.recurrence == RecurrenceType.PRN }
+            .mapNotNull { sched ->
+                val item = itemMap[sched.itemId] ?: return@mapNotNull null
+                if (selectedProfileId != null && item.profileId != selectedProfileId) {
+                    return@mapNotNull null
+                }
+                val takenToday = todayOccurrences.count {
+                    it.itemId == item.id && it.status == OccurrenceStatus.TAKEN
+                }
+                val maxPerDay = item.maxPerDay
+                AsNeededUiModel(
+                    item = item,
+                    profile = profileMap[item.profileId],
+                    schedule = sched,
+                    takenToday = takenToday,
+                    maxPerDay = maxPerDay,
+                    canTake = maxPerDay == null || takenToday < maxPerDay
                 )
             }
 
@@ -148,6 +198,9 @@ class TodayViewModel @Inject constructor(
             exactAlarmsDenied = checkExactAlarmsDenied(),
             rescheduleError = rescheduleError,
             activeMealSession = activeSession,
+            asNeededItems = asNeededItems,
+            asNeededWarning = asNeededWarning,
+            asNeededLimitItem = asNeededLimitItem,
             isLoading = false
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), TodayUiState())
@@ -192,6 +245,72 @@ class TodayViewModel @Inject constructor(
 
     fun dismissDoubleDoseWarning() {
         _doubleDoseWarning.value = null
+    }
+
+    /**
+     * Records a dose for an as-needed (PRN) item. PRN items are never planned by the engine, so the
+     * user creates the TAKEN occurrence here. The daily cap and the double-dose gap both block the
+     * insert unless the user explicitly confirms the gap warning.
+     */
+    fun onTakeAsNeeded(asNeeded: AsNeededUiModel, force: Boolean = false) {
+        viewModelScope.launch {
+            val item = asNeeded.item
+            val now = System.currentTimeMillis()
+            val zone = ZoneId.systemDefault()
+            val today = LocalDate.now(zone)
+            val dayStart = today.atStartOfDay(zone).toInstant().toEpochMilli()
+            val dayEnd = today.plusDays(1).atStartOfDay(zone).toInstant().toEpochMilli()
+            val takenToday = occurrenceRepository.countTakenBetweenSync(item.id, dayStart, dayEnd)
+
+            val maxPerDay = item.maxPerDay
+            if (maxPerDay != null && takenToday >= maxPerDay) {
+                _asNeededLimitItem.value = asNeeded.copy(takenToday = takenToday, canTake = false)
+                return@launch
+            }
+
+            if (!force) {
+                val lastTaken = occurrenceRepository.getLastTakenBeforeSync(item.id, now)
+                val warning = SchedulingEngine.doseWarning(
+                    item = item,
+                    lastTakenAt = lastTaken?.actedAt?.let { Instant.ofEpochMilli(it) },
+                    now = Instant.ofEpochMilli(now)
+                )
+                if (warning != null) {
+                    _asNeededWarning.value = asNeeded
+                    return@launch
+                }
+            }
+
+            _asNeededWarning.value = null
+            _asNeededLimitItem.value = null
+            val deviceId = settingsRepository.getOrCreateDeviceId()
+            occurrenceRepository.upsertOccurrences(
+                listOf(
+                    Occurrence(
+                        id = UUID.randomUUID().toString(),
+                        itemId = item.id,
+                        scheduleId = asNeeded.schedule.id,
+                        profileId = item.profileId,
+                        plannedAt = now,
+                        dueAt = now,
+                        remindAt = now,
+                        status = OccurrenceStatus.TAKEN,
+                        actedAt = now,
+                        deviceId = deviceId,
+                        updatedAt = now
+                    )
+                )
+            )
+            alarmCoordinator.reschedule("taken_as_needed")
+        }
+    }
+
+    fun dismissAsNeededWarning() {
+        _asNeededWarning.value = null
+    }
+
+    fun dismissAsNeededLimit() {
+        _asNeededLimitItem.value = null
     }
 
     fun retryReschedule() {

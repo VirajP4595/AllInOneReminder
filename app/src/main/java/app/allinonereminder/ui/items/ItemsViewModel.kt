@@ -50,7 +50,7 @@ class ItemsViewModel @Inject constructor(
             }
             .map { item ->
                 val scheds = scheduleRepository.getActiveSchedules(item.id).firstOrNull() ?: emptyList()
-                val summary = formatSchedulesSummary(scheds)
+                val summary = formatSchedulesSummary(scheds, item)
                 ItemWithSchedulesUiModel(
                     item = item,
                     profile = profileMap[item.profileId],
@@ -77,35 +77,97 @@ class ItemsViewModel @Inject constructor(
     }
 
     companion object {
-        fun formatSchedulesSummary(schedules: List<Schedule>): String {
+        private val weekdayNames = listOf("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun")
+
+        private fun formatWeekdayMask(mask: Int?): String {
+            if (mask == null || mask == 0) return "no days"
+            val days = weekdayNames.filterIndexed { index, _ -> (mask and (1 shl index)) != 0 }
+            return if (days.size == 7) "every day" else days.joinToString(", ")
+        }
+
+        private fun formatMinuteOfDay(minuteOfDay: Int): String {
+            val hour = (minuteOfDay / 60) % 24
+            val min = minuteOfDay % 60
+            val ampm = if (hour >= 12) "PM" else "AM"
+            val hour12 = if (hour % 12 == 0) 12 else hour % 12
+            return String.format("%d:%02d %s", hour12, min, ampm)
+        }
+
+        private fun nthWeekLabel(nthWeek: Int): String = when (nthWeek.coerceIn(1, 5)) {
+            1 -> "1st"
+            2 -> "2nd"
+            3 -> "3rd"
+            5 -> "last"
+            else -> "4th"
+        }
+
+        @Suppress("UNUSED_PARAMETER")
+        fun formatSchedulesSummary(schedules: List<Schedule>, item: Item? = null): String {
             if (schedules.isEmpty()) return "No schedule configured"
             return schedules.joinToString("; ") { sched ->
                 val recurrence = when (sched.recurrence) {
                     RecurrenceType.DAILY -> "Every day"
                     RecurrenceType.WEEKDAYS -> "Weekdays"
                     RecurrenceType.EVERY_N_DAYS -> "Every ${sched.intervalN ?: 1} days"
-                    RecurrenceType.EVERY_N_WEEKS -> "Every ${sched.intervalN ?: 1} weeks"
+                    RecurrenceType.EVERY_N_WEEKS -> {
+                        val n = sched.intervalN ?: 1
+                        val days = formatWeekdayMask(sched.weekdayMask)
+                        if (n == 1) "Specific days ($days)" else "Every $n weeks ($days)"
+                    }
+                    RecurrenceType.MONTHLY -> {
+                        val day = sched.dayOfMonth
+                        val nth = sched.nthWeek
+                        when {
+                            day != null -> "Monthly on day $day"
+                            nth != null -> {
+                                val weekdayIndex = (0..6).firstOrNull {
+                                    ((sched.weekdayMask ?: 0) and (1 shl it)) != 0
+                                }
+                                val weekday = weekdayNames.getOrNull(weekdayIndex ?: -1) ?: "day"
+                                "Monthly on the ${nthWeekLabel(nth)} $weekday"
+                            }
+                            else -> "Monthly"
+                        }
+                    }
+                    RecurrenceType.INTERVAL -> {
+                        val hours = sched.intervalHours ?: 1
+                        val start = sched.windowStartMinute ?: sched.minuteOfDay ?: 0
+                        val end = sched.windowEndMinute ?: start
+                        "Every $hours h from ${formatMinuteOfDay(start)} to ${formatMinuteOfDay(end)}"
+                    }
+                    RecurrenceType.PRN -> "As needed"
                     RecurrenceType.ONCE -> "Once"
                 }
 
-                val timing = if (sched.anchorType == ScheduleAnchorType.FIXED) {
-                    val mod = sched.minuteOfDay ?: 0
-                    val hour = mod / 60
-                    val min = mod % 60
-                    val ampm = if (hour >= 12) "PM" else "AM"
-                    val hour12 = if (hour % 12 == 0) 12 else hour % 12
-                    String.format("at %d:%02d %s", hour12, min, ampm)
-                } else {
-                    val meal = sched.meal?.name?.lowercase() ?: "meal"
-                    val rel = when (sched.relation) {
-                        MealRelation.BEFORE -> "${sched.offsetMinutes ?: 0}m before"
-                        MealRelation.WITH -> "with"
-                        MealRelation.AFTER -> "${sched.offsetMinutes ?: 0}m after"
-                        null -> "at"
+                val timing = when {
+                    sched.recurrence == RecurrenceType.PRN -> ""
+                    sched.recurrence == RecurrenceType.INTERVAL -> ""
+                    sched.anchorType == ScheduleAnchorType.FIXED ->
+                        "at ${formatMinuteOfDay(sched.minuteOfDay ?: 0)}, "
+                    else -> {
+                        val meal = sched.meal?.name?.lowercase() ?: "meal"
+                        val rel = when (sched.relation) {
+                            MealRelation.BEFORE -> "${sched.offsetMinutes ?: 0}m before"
+                            MealRelation.WITH -> "with"
+                            MealRelation.AFTER -> "${sched.offsetMinutes ?: 0}m after"
+                            null -> "at"
+                        }
+                        "$rel $meal, "
                     }
-                    "$rel $meal"
                 }
-                "$timing, $recurrence"
+
+                val dose = sched.doseAmountOverride
+                    ?.takeIf { it.isNotBlank() }
+                    ?.let { "$it — " }
+                    ?: ""
+                val validity = when {
+                    sched.validFrom != null && sched.validUntil != null ->
+                        " (${sched.validFrom} to ${sched.validUntil})"
+                    sched.validFrom != null -> " (from ${sched.validFrom})"
+                    sched.validUntil != null -> " (until ${sched.validUntil})"
+                    else -> ""
+                }
+                "$dose$timing$recurrence$validity"
             }
         }
     }

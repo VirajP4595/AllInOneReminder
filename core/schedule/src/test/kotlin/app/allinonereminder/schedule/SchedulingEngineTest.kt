@@ -62,12 +62,20 @@ class SchedulingEngineTest {
     private fun createFixedSchedule(
         id: String = "sched-1",
         itemId: String = "item-1",
-        minuteOfDay: Int = 9 * 60, // 09:00
+        minuteOfDay: Int? = 9 * 60, // 09:00
         recurrence: RecurrenceType = RecurrenceType.DAILY,
         weekdayMask: Int? = null,
         intervalN: Int? = null,
         anchorDate: String = "2026-01-01",
         onceDate: String? = null,
+        dayOfMonth: Int? = null,
+        nthWeek: Int? = null,
+        intervalHours: Int? = null,
+        windowStartMinute: Int? = null,
+        windowEndMinute: Int? = null,
+        validFrom: String? = null,
+        validUntil: String? = null,
+        doseAmountOverride: String? = null,
         deletedAt: Long? = null
     ) = Schedule(
         id = id,
@@ -79,6 +87,14 @@ class SchedulingEngineTest {
         intervalN = intervalN,
         anchorDate = anchorDate,
         onceDate = onceDate,
+        dayOfMonth = dayOfMonth,
+        nthWeek = nthWeek,
+        intervalHours = intervalHours,
+        windowStartMinute = windowStartMinute,
+        windowEndMinute = windowEndMinute,
+        validFrom = validFrom,
+        validUntil = validUntil,
+        doseAmountOverride = doseAmountOverride,
         createdAt = 1000L,
         updatedAt = 1000L,
         deletedAt = deletedAt
@@ -595,6 +611,194 @@ class SchedulingEngineTest {
             assertThat(zdt.hour).isEqualTo(9)
             assertThat(zdt.minute).isEqualTo(0)
         }
+    }
+
+    // 16. Monthly on a day of the month, clamped to the month length
+    @Test
+    fun plan_monthlyByDayOfMonth_clampsToShorterMonths() {
+        val item = createItem(startDate = "2026-01-01")
+        val sched = createFixedSchedule(
+            recurrence = RecurrenceType.MONTHLY,
+            dayOfMonth = 31
+        )
+        val from = ZonedDateTime.of(2026, 1, 1, 0, 0, 0, 0, kolkataZone).toInstant()
+        val to = ZonedDateTime.of(2026, 4, 3, 0, 0, 0, 0, kolkataZone).toInstant()
+
+        val occurrences = SchedulingEngine.plan(listOf(item), listOf(sched), emptyList(), emptyList(), from, to, kolkataZone)
+        val days = occurrences.map { it.plannedAt.atZone(kolkataZone).toLocalDate() }
+        // 31 -> Jan 31, Feb 28 (2026 is not a leap year) and Mar 31.
+        assertThat(days).containsExactly(
+            LocalDate.of(2026, 1, 31),
+            LocalDate.of(2026, 2, 28),
+            LocalDate.of(2026, 3, 31)
+        ).inOrder()
+    }
+
+    @Test
+    fun plan_monthlyByDayOfMonth_leapYearFebruaryUses29th() {
+        val item = createItem(startDate = "2028-02-01")
+        val sched = createFixedSchedule(
+            recurrence = RecurrenceType.MONTHLY,
+            dayOfMonth = 31
+        )
+        val from = ZonedDateTime.of(2028, 2, 1, 0, 0, 0, 0, kolkataZone).toInstant()
+        val to = ZonedDateTime.of(2028, 3, 1, 0, 0, 0, 0, kolkataZone).toInstant()
+
+        val occurrences = SchedulingEngine.plan(listOf(item), listOf(sched), emptyList(), emptyList(), from, to, kolkataZone)
+        assertThat(occurrences).hasSize(1)
+        assertThat(occurrences[0].plannedAt.atZone(kolkataZone).toLocalDate())
+            .isEqualTo(LocalDate.of(2028, 2, 29))
+    }
+
+    // 17. Monthly on the Nth weekday and on the last weekday
+    @Test
+    fun plan_monthlyNthWeekday_secondTuesdayAndLastFriday() {
+        val item = createItem(startDate = "2026-02-01")
+        val secondTuesday = createFixedSchedule(
+            id = "sched-tue",
+            recurrence = RecurrenceType.MONTHLY,
+            weekdayMask = 1 shl 1, // Tuesday
+            nthWeek = 2
+        )
+        val lastFriday = createFixedSchedule(
+            id = "sched-fri",
+            recurrence = RecurrenceType.MONTHLY,
+            weekdayMask = 1 shl 4, // Friday
+            nthWeek = 5
+        )
+        val from = ZonedDateTime.of(2026, 2, 1, 0, 0, 0, 0, kolkataZone).toInstant()
+        val to = ZonedDateTime.of(2026, 3, 1, 0, 0, 0, 0, kolkataZone).toInstant()
+
+        val tuesdays = SchedulingEngine.plan(listOf(item), listOf(secondTuesday), emptyList(), emptyList(), from, to, kolkataZone)
+        val fridays = SchedulingEngine.plan(listOf(item), listOf(lastFriday), emptyList(), emptyList(), from, to, kolkataZone)
+
+        assertThat(tuesdays).hasSize(1)
+        assertThat(tuesdays[0].plannedAt.atZone(kolkataZone).toLocalDate())
+            .isEqualTo(LocalDate.of(2026, 2, 10))
+        assertThat(fridays).hasSize(1)
+        assertThat(fridays[0].plannedAt.atZone(kolkataZone).toLocalDate())
+            .isEqualTo(LocalDate.of(2026, 2, 27))
+    }
+
+    // 18. INTERVAL produces several doses per day inside the window
+    @Test
+    fun plan_interval_generatesEveryNthHourInsideWindow() {
+        val item = createItem(startDate = "2026-01-05")
+        val sched = createFixedSchedule(
+            recurrence = RecurrenceType.INTERVAL,
+            intervalHours = 4,
+            windowStartMinute = 8 * 60, // 08:00
+            windowEndMinute = 20 * 60 // 20:00
+        )
+        val from = ZonedDateTime.of(2026, 1, 5, 0, 0, 0, 0, kolkataZone).toInstant()
+        val to = ZonedDateTime.of(2026, 1, 6, 0, 0, 0, 0, kolkataZone).toInstant()
+
+        val occurrences = SchedulingEngine.plan(listOf(item), listOf(sched), emptyList(), emptyList(), from, to, kolkataZone)
+        val times = occurrences.map {
+            val local = it.plannedAt.atZone(kolkataZone).toLocalTime()
+            local.hour * 60 + local.minute
+        }
+        assertThat(times).containsExactly(8 * 60, 12 * 60, 16 * 60, 20 * 60).inOrder()
+    }
+
+    @Test
+    fun plan_interval_londonSpringForward_shiftsNonexistentHour() {
+        val item = createItem(
+            id = "item-lon",
+            timePolicy = TimePolicy.LOCAL_WALL_CLOCK,
+            startDate = "2026-03-29"
+        )
+        // 01:30 does not exist on 2026-03-29 in London (01:00 -> 02:00, gap shifts to 02:30).
+        val sched = createFixedSchedule(
+            id = "sched-lon",
+            itemId = "item-lon",
+            recurrence = RecurrenceType.INTERVAL,
+            intervalHours = 1,
+            windowStartMinute = 1 * 60 + 30,
+            windowEndMinute = 1 * 60 + 30
+        )
+        val from = ZonedDateTime.of(2026, 3, 29, 0, 0, 0, 0, londonZone).toInstant()
+        val to = ZonedDateTime.of(2026, 3, 30, 0, 0, 0, 0, londonZone).toInstant()
+
+        val occurrences = SchedulingEngine.plan(listOf(item), listOf(sched), emptyList(), emptyList(), from, to, londonZone)
+        assertThat(occurrences).hasSize(1)
+        val local = occurrences[0].plannedAt.atZone(londonZone)
+        assertThat(local.hour).isEqualTo(2)
+        assertThat(local.minute).isEqualTo(30)
+    }
+
+    @Test
+    fun plan_interval_newYorkFallBack_usesEarlierOffsetForAmbiguousHour() {
+        val item = createItem(
+            id = "item-ny",
+            timePolicy = TimePolicy.LOCAL_WALL_CLOCK,
+            startDate = "2026-11-01"
+        )
+        val sched = createFixedSchedule(
+            id = "sched-ny",
+            itemId = "item-ny",
+            recurrence = RecurrenceType.INTERVAL,
+            intervalHours = 1,
+            windowStartMinute = 0,
+            windowEndMinute = 2 * 60
+        )
+        val from = ZonedDateTime.of(2026, 11, 1, 0, 0, 0, 0, nyZone).toInstant()
+        val to = ZonedDateTime.of(2026, 11, 2, 0, 0, 0, 0, nyZone).toInstant()
+
+        val occurrences = SchedulingEngine.plan(listOf(item), listOf(sched), emptyList(), emptyList(), from, to, nyZone)
+        assertThat(occurrences).hasSize(3)
+        // 01:00 is ambiguous; the earlier offset (EDT, UTC-4) is used.
+        val oneAm = occurrences.first { it.plannedAt.atZone(nyZone).hour == 1 }
+        assertThat(oneAm.plannedAt.atZone(nyZone).offset.totalSeconds).isEqualTo(-4 * 3600)
+    }
+
+    // 19. Schedule validity range (taper) applies to every recurrence type
+    @Test
+    fun plan_validityRange_limitsEveryRecurrenceType() {
+        val item = createItem(startDate = "2026-01-01")
+        val baseSchedules = listOf(
+            createFixedSchedule(id = "daily", recurrence = RecurrenceType.DAILY),
+            createFixedSchedule(id = "weekdays", recurrence = RecurrenceType.WEEKDAYS),
+            createFixedSchedule(id = "every-n", recurrence = RecurrenceType.EVERY_N_DAYS, intervalN = 1),
+            createFixedSchedule(
+                id = "every-n-weeks",
+                recurrence = RecurrenceType.EVERY_N_WEEKS,
+                intervalN = 1,
+                weekdayMask = 127
+            ),
+            createFixedSchedule(id = "monthly", recurrence = RecurrenceType.MONTHLY, dayOfMonth = 1),
+            createFixedSchedule(
+                id = "interval",
+                recurrence = RecurrenceType.INTERVAL,
+                intervalHours = 6,
+                windowStartMinute = 8 * 60,
+                windowEndMinute = 20 * 60
+            ),
+            createFixedSchedule(id = "once", recurrence = RecurrenceType.ONCE, onceDate = "2026-01-03")
+        ).map { it.copy(validFrom = "2026-01-05", validUntil = "2026-01-06") }
+
+        val from = ZonedDateTime.of(2026, 1, 1, 0, 0, 0, 0, kolkataZone).toInstant()
+        val to = ZonedDateTime.of(2026, 1, 10, 0, 0, 0, 0, kolkataZone).toInstant()
+
+        val occurrences = SchedulingEngine.plan(listOf(item), baseSchedules, emptyList(), emptyList(), from, to, kolkataZone)
+        assertThat(occurrences).isNotEmpty()
+        for (occ in occurrences) {
+            val date = occ.plannedAt.atZone(kolkataZone).toLocalDate()
+            assertThat(date.isBefore(LocalDate.of(2026, 1, 5))).isFalse()
+            assertThat(date.isAfter(LocalDate.of(2026, 1, 6))).isFalse()
+        }
+    }
+
+    // 20. PRN items are never planned; the user records each dose from Today
+    @Test
+    fun plan_prnRecurrence_producesNoPlannedOccurrences() {
+        val item = createItem(startDate = "2026-01-01")
+        val sched = createFixedSchedule(recurrence = RecurrenceType.PRN)
+        val from = ZonedDateTime.of(2026, 1, 1, 0, 0, 0, 0, kolkataZone).toInstant()
+        val to = ZonedDateTime.of(2026, 1, 8, 0, 0, 0, 0, kolkataZone).toInstant()
+
+        val occurrences = SchedulingEngine.plan(listOf(item), listOf(sched), emptyList(), emptyList(), from, to, kolkataZone)
+        assertThat(occurrences).isEmpty()
     }
 }
 

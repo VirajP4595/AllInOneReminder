@@ -35,6 +35,10 @@ fun TodayScreen(
     onProfileSelected: (String?) -> Unit = {},
     onTake: (OccurrenceUiModel) -> Unit = {},
     onTakeConfirmed: (OccurrenceUiModel) -> Unit = {},
+    onTakeAsNeeded: (AsNeededUiModel) -> Unit = {},
+    onTakeAsNeededConfirmed: (AsNeededUiModel) -> Unit = {},
+    onDismissAsNeededWarning: () -> Unit = {},
+    onDismissAsNeededLimit: () -> Unit = {},
     onDismissDoubleDoseWarning: () -> Unit = {},
     onSnooze: (OccurrenceUiModel) -> Unit = {},
     onSkip: (OccurrenceUiModel, SkipReason) -> Unit = { _, _ -> },
@@ -171,38 +175,51 @@ fun TodayScreen(
                 )
             }
 
+            // As-needed (PRN) items have no planned times; show a Take now card for each.
+            if (uiState.asNeededItems.isNotEmpty()) {
+                AsNeededSection(
+                    items = uiState.asNeededItems,
+                    showProfileBadge = uiState.selectedProfileId == null,
+                    onTakeNow = onTakeAsNeeded
+                )
+            }
+
             // Timeline of occurrences
             if (uiState.occurrences.isEmpty()) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(24.dp),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Icon(
-                            imageVector = Icons.Default.CheckCircleOutline,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.size(64.dp)
-                        )
-                        Spacer(modifier = Modifier.height(12.dp))
-                        Text(
-                            text = "No doses or events scheduled for today",
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.SemiBold
-                        )
-                        Spacer(modifier = Modifier.height(4.dp))
-                        Text(
-                            text = "Tap 'Items' below to add medications or appointments.",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
+                if (uiState.asNeededItems.isEmpty()) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(24.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Icon(
+                                imageVector = Icons.Default.CheckCircleOutline,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(64.dp)
+                            )
+                            Spacer(modifier = Modifier.height(12.dp))
+                            Text(
+                                text = "No doses or events scheduled for today",
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Text(
+                                text = "Tap 'Items' below to add medications or appointments.",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
                     }
                 }
             } else {
                 LazyColumn(
-                    modifier = Modifier.fillMaxSize(),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .weight(1f),
                     contentPadding = PaddingValues(16.dp),
                     verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
@@ -244,6 +261,54 @@ fun TodayScreen(
             dismissButton = {
                 OutlinedButton(onClick = onDismissDoubleDoseWarning) {
                     Text("Cancel")
+                }
+            }
+        )
+    }
+
+    // Double-dose guard confirmation dialog for as-needed items
+    val asNeededWarn = uiState.asNeededWarning
+    if (asNeededWarn != null) {
+        AlertDialog(
+            onDismissRequest = onDismissAsNeededWarning,
+            icon = { Icon(Icons.Default.Warning, contentDescription = null, tint = MaterialTheme.colorScheme.error) },
+            title = { Text("Double-Dose Warning") },
+            text = {
+                Text(
+                    text = "A dose of ${asNeededWarn.item.name} was already taken recently. Taking another dose within ${asNeededWarn.item.minGapMinutes ?: 240} minutes could result in accidental double-dosing.\n\nAre you sure you want to proceed?"
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = { onTakeAsNeededConfirmed(asNeededWarn) },
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
+                ) {
+                    Text("Take Anyway")
+                }
+            },
+            dismissButton = {
+                OutlinedButton(onClick = onDismissAsNeededWarning) {
+                    Text("Cancel")
+                }
+            }
+        )
+    }
+
+    // Daily cap reached for an as-needed item
+    val asNeededLimit = uiState.asNeededLimitItem
+    if (asNeededLimit != null) {
+        AlertDialog(
+            onDismissRequest = onDismissAsNeededLimit,
+            icon = { Icon(Icons.Default.Warning, contentDescription = null, tint = MaterialTheme.colorScheme.error) },
+            title = { Text("Daily Limit Reached") },
+            text = {
+                Text(
+                    text = "${asNeededLimit.item.name} has already been taken ${asNeededLimit.maxPerDay ?: asNeededLimit.takenToday} time(s) today. The daily limit is set in the item's schedule."
+                )
+            },
+            confirmButton = {
+                Button(onClick = onDismissAsNeededLimit) {
+                    Text("OK")
                 }
             }
         )
@@ -476,7 +541,7 @@ private fun OccurrenceTimelineCard(
                         fontWeight = FontWeight.Bold
                     )
                     Text(
-                        text = "${item.dosageAmount} ${item.dosageUnit} ${item.form ?: ""}",
+                        text = "${effectiveDoseAmount(uiModel.schedule, item)} ${item.dosageUnit} ${item.form ?: ""}",
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -533,6 +598,110 @@ private fun OccurrenceTimelineCard(
                         Text("Skip")
                     }
                 }
+            }
+        }
+    }
+}
+
+@Composable
+private fun AsNeededSection(
+    items: List<AsNeededUiModel>,
+    showProfileBadge: Boolean,
+    onTakeNow: (AsNeededUiModel) -> Unit
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 6.dp)
+    ) {
+        Text(
+            text = "As needed",
+            style = MaterialTheme.typography.titleSmall,
+            fontWeight = FontWeight.Bold
+        )
+        Spacer(modifier = Modifier.height(6.dp))
+        LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            items(items, key = { it.schedule.id }) { asNeeded ->
+                AsNeededCard(
+                    uiModel = asNeeded,
+                    showProfileBadge = showProfileBadge,
+                    onTakeNow = { onTakeNow(asNeeded) }
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun AsNeededCard(
+    uiModel: AsNeededUiModel,
+    showProfileBadge: Boolean,
+    onTakeNow: () -> Unit
+) {
+    val item = uiModel.item
+    Card(
+        modifier = Modifier.width(260.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+    ) {
+        Column(modifier = Modifier.padding(14.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    imageVector = Icons.Default.Medication,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(22.dp)
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    text = item.name,
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold
+                )
+            }
+            Spacer(modifier = Modifier.height(4.dp))
+            Text(
+                text = "${effectiveDoseAmount(uiModel.schedule, item)} ${item.dosageUnit} ${item.form ?: ""}",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            if (showProfileBadge && uiModel.profile != null) {
+                Spacer(modifier = Modifier.height(4.dp))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Box(
+                        modifier = Modifier
+                            .size(8.dp)
+                            .clip(CircleShape)
+                            .background(Color(uiModel.profile.colorArgb))
+                    )
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text(
+                        text = uiModel.profile.name,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                }
+            }
+            Spacer(modifier = Modifier.height(6.dp))
+            val max = uiModel.maxPerDay
+            Text(
+                text = if (max != null) {
+                    "Taken today: ${uiModel.takenToday} of $max"
+                } else {
+                    "Taken today: ${uiModel.takenToday}"
+                },
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Spacer(modifier = Modifier.height(10.dp))
+            Button(
+                onClick = onTakeNow,
+                enabled = uiModel.canTake,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .defaultMinSize(minHeight = 44.dp)
+            ) {
+                Text(if (uiModel.canTake) "Take now" else "Daily limit reached")
             }
         }
     }

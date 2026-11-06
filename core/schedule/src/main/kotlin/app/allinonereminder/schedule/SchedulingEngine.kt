@@ -67,6 +67,7 @@ object SchedulingEngine {
 
         for (schedule in schedules) {
             if (schedule.deletedAt != null) continue
+            if (schedule.recurrence == RecurrenceType.PRN) continue // as-needed items have no planned doses
             val item = activeItems[schedule.itemId] ?: continue
 
             val evalZone = if (item.timePolicy == TimePolicy.HOME_ZONE) {
@@ -87,9 +88,9 @@ object SchedulingEngine {
 
             var currentDate = iterStart
             while (!currentDate.isAfter(iterEnd)) {
-                if (matchesRecurrence(schedule, currentDate)) {
-                    val minute = resolveMinuteOfDay(schedule, currentDate, item.profileId, anchorMap)
-                    if (minute != null) {
+                if (isWithinValidity(schedule, currentDate) && matchesRecurrence(schedule, currentDate)) {
+                    val minutes = resolveMinutesOfDay(schedule, currentDate, item.profileId, anchorMap)
+                    for (minute in minutes) {
                         val secondOfDay = (minute * 60L).coerceIn(0L, 86399L)
                         val ldt = LocalDateTime.of(currentDate, LocalTime.ofSecondOfDay(secondOfDay))
                         val plannedInstant = toSafeInstant(ldt, evalZone)
@@ -154,6 +155,14 @@ object SchedulingEngine {
         return result.sortedBy { it.dueAt }
     }
 
+    private fun isWithinValidity(schedule: Schedule, date: LocalDate): Boolean {
+        val from = schedule.validFrom?.let { runCatching { LocalDate.parse(it) }.getOrNull() }
+        if (from != null && date.isBefore(from)) return false
+        val until = schedule.validUntil?.let { runCatching { LocalDate.parse(it) }.getOrNull() }
+        if (until != null && date.isAfter(until)) return false
+        return true
+    }
+
     private fun matchesRecurrence(schedule: Schedule, date: LocalDate): Boolean {
         return when (schedule.recurrence) {
             RecurrenceType.DAILY -> true
@@ -179,10 +188,65 @@ object SchedulingEngine {
                     (bit and mask) != 0
                 }
             }
+            RecurrenceType.MONTHLY -> {
+                val dayOfMonth = schedule.dayOfMonth
+                val nthWeek = schedule.nthWeek
+                when {
+                    dayOfMonth != null -> {
+                        // 31 becomes 30 in April and 28/29 in February.
+                        val targetDay = dayOfMonth.coerceAtMost(date.lengthOfMonth())
+                        date.dayOfMonth == targetDay
+                    }
+                    nthWeek != null -> {
+                        val mask = schedule.weekdayMask ?: 0
+                        val bit = 1 shl (date.dayOfWeek.value - 1)
+                        if ((bit and mask) == 0) {
+                            false
+                        } else {
+                            val week = nthWeek.coerceIn(1, 5)
+                            if (week == 5) {
+                                // Last occurrence of this weekday in the month.
+                                date.plusWeeks(1).month != date.month
+                            } else {
+                                date.dayOfMonth in ((week - 1) * 7 + 1)..(week * 7)
+                            }
+                        }
+                    }
+                    else -> false
+                }
+            }
+            // INTERVAL schedules every day; the dose times are produced by resolveMinutesOfDay.
+            RecurrenceType.INTERVAL -> true
+            // PRN is filtered out before planning; keep this branch for exhaustiveness.
+            RecurrenceType.PRN -> false
             RecurrenceType.ONCE -> {
                 schedule.onceDate?.let { LocalDate.parse(it) == date } ?: false
             }
         }
+    }
+
+    /**
+     * Fixed INTERVAL schedules produce several doses a day: windowStart + k * intervalHours up to
+     * and including windowEnd. Every other schedule produces at most one dose.
+     */
+    private fun resolveMinutesOfDay(
+        schedule: Schedule,
+        date: LocalDate,
+        profileId: String,
+        anchorMap: Map<String, Map<Pair<DayType, app.allinonereminder.model.MealType>, Int>>
+    ): List<Int> {
+        if (schedule.recurrence == RecurrenceType.INTERVAL && schedule.anchorType == ScheduleAnchorType.FIXED) {
+            val step = (schedule.intervalHours ?: 1).coerceAtLeast(1) * 60
+            val start = (schedule.windowStartMinute ?: schedule.minuteOfDay ?: return emptyList())
+                .coerceIn(0, 1439)
+            val end = (schedule.windowEndMinute ?: start).coerceIn(0, 1439)
+            if (start > end) return emptyList()
+            return generateSequence(start) { it + step }
+                .takeWhile { it <= end }
+                .toList()
+        }
+        val minute = resolveMinuteOfDay(schedule, date, profileId, anchorMap) ?: return emptyList()
+        return listOf(minute)
     }
 
     private fun resolveMinuteOfDay(

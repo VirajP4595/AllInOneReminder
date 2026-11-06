@@ -54,6 +54,9 @@ enum class RecurrenceType {
     WEEKDAYS,
     EVERY_N_DAYS,
     EVERY_N_WEEKS,
+    MONTHLY,
+    INTERVAL,
+    PRN,
     ONCE
 }
 

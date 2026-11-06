@@ -40,6 +40,7 @@ data class Item(
     val startDate: String, // YYYY-MM-DD
     val endDate: String? = null, // YYYY-MM-DD
     val exerciseTargetMinutes: Int? = null,
+    val maxPerDay: Int? = null, // for PRN (as-needed) items
     val active: Boolean = true,
     val createdAt: Long,
     val updatedAt: Long,
@@ -68,10 +69,25 @@ data class Schedule(
     val intervalN: Int? = null,
     val anchorDate: String, // YYYY-MM-DD
     val onceDate: String? = null, // YYYY-MM-DD
+    val dayOfMonth: Int? = null, // MONTHLY: 1-31, clamped to the month length
+    val nthWeek: Int? = null, // MONTHLY: 1-4, or 5 = last
+    val intervalHours: Int? = null, // INTERVAL: hours between doses
+    val windowStartMinute: Int? = null, // INTERVAL: first dose of the day
+    val windowEndMinute: Int? = null, // INTERVAL: last dose of the day (inclusive)
+    val validFrom: String? = null, // YYYY-MM-DD, inclusive
+    val validUntil: String? = null, // YYYY-MM-DD, inclusive
+    val doseAmountOverride: String? = null, // taper step dose
     val createdAt: Long,
     val updatedAt: Long,
     val deletedAt: Long? = null
 )
+
+/**
+ * The dose to show for a schedule. A taper uses several schedules on one item, each with its own
+ * [Schedule.doseAmountOverride]; every other schedule falls back to the item's dose.
+ */
+fun effectiveDoseAmount(schedule: Schedule?, item: Item): String =
+    schedule?.doseAmountOverride?.takeIf { it.isNotBlank() } ?: item.dosageAmount
 
 data class Occurrence(
     val id: String,

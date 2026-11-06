@@ -69,4 +69,69 @@ class DatabaseMigrationTest {
         cursor.close()
         db.close()
     }
+
+    @Test
+    fun migrate2To3_addsNewScheduleAndItemColumns_preservesExistingRows() {
+        var db = helper.createDatabase(testDbName, 2).apply {
+            execSQL(
+                "INSERT INTO item (id, profileId, type, name, dosageAmount, dosageUnit, criticality, graceMinutes, reRingMinutes, timePolicy, homeZoneId, startDate, active, createdAt, updatedAt) " +
+                    "VALUES ('i-1', 'p-1', 'MEDICINE', 'Aspirin', '500', 'mg', 'NORMAL', 60, 5, 'LOCAL_WALL_CLOCK', 'Asia/Kolkata', '2026-01-01', 1, 1000, 1000)"
+            )
+            execSQL(
+                "INSERT INTO schedule (id, itemId, anchorType, recurrence, anchorDate, createdAt, updatedAt) " +
+                    "VALUES ('s-1', 'i-1', 'FIXED', 'DAILY', '2026-01-01', 1000, 1000)"
+            )
+            close()
+        }
+
+        db = helper.runMigrationsAndValidate(testDbName, 3, true, MIGRATION_2_3)
+
+        val itemCursor = db.query("SELECT id, dosageAmount, maxPerDay FROM item WHERE id = 'i-1'")
+        assertThat(itemCursor.moveToFirst()).isTrue()
+        assertThat(itemCursor.getString(0)).isEqualTo("i-1")
+        assertThat(itemCursor.getString(1)).isEqualTo("500")
+        assertThat(itemCursor.isNull(2)).isTrue()
+        itemCursor.close()
+
+        val scheduleCursor = db.query(
+            "SELECT id, recurrence, dayOfMonth, nthWeek, intervalHours, windowStartMinute, windowEndMinute, validFrom, validUntil, doseAmountOverride " +
+                "FROM schedule WHERE id = 's-1'"
+        )
+        assertThat(scheduleCursor.moveToFirst()).isTrue()
+        assertThat(scheduleCursor.getString(0)).isEqualTo("s-1")
+        assertThat(scheduleCursor.getString(1)).isEqualTo("DAILY")
+        for (index in 2..9) {
+            assertThat(scheduleCursor.isNull(index)).isTrue()
+        }
+        scheduleCursor.close()
+
+        // The new columns are writable with the values the editor and backup restore use.
+        db.execSQL(
+            "UPDATE schedule SET dayOfMonth = 15, nthWeek = 2, intervalHours = 4, windowStartMinute = 480, " +
+                "windowEndMinute = 1200, validFrom = '2026-01-01', validUntil = '2026-02-01', doseAmountOverride = '250' WHERE id = 's-1'"
+        )
+        db.execSQL("UPDATE item SET maxPerDay = 3 WHERE id = 'i-1'")
+
+        val updatedSchedule = db.query(
+            "SELECT dayOfMonth, nthWeek, intervalHours, windowStartMinute, windowEndMinute, validFrom, validUntil, doseAmountOverride " +
+                "FROM schedule WHERE id = 's-1'"
+        )
+        assertThat(updatedSchedule.moveToFirst()).isTrue()
+        assertThat(updatedSchedule.getInt(0)).isEqualTo(15)
+        assertThat(updatedSchedule.getInt(1)).isEqualTo(2)
+        assertThat(updatedSchedule.getInt(2)).isEqualTo(4)
+        assertThat(updatedSchedule.getInt(3)).isEqualTo(480)
+        assertThat(updatedSchedule.getInt(4)).isEqualTo(1200)
+        assertThat(updatedSchedule.getString(5)).isEqualTo("2026-01-01")
+        assertThat(updatedSchedule.getString(6)).isEqualTo("2026-02-01")
+        assertThat(updatedSchedule.getString(7)).isEqualTo("250")
+        updatedSchedule.close()
+
+        val updatedItem = db.query("SELECT maxPerDay FROM item WHERE id = 'i-1'")
+        assertThat(updatedItem.moveToFirst()).isTrue()
+        assertThat(updatedItem.getInt(0)).isEqualTo(3)
+        updatedItem.close()
+
+        db.close()
+    }
 }
