@@ -3,26 +3,20 @@ plugins {
     jacoco
 }
 
-group = "app.allinonereminder"
-version = "0.1.0"
-
-kotlin {
-    jvmToolchain(21)
+java {
+    sourceCompatibility = JavaVersion.VERSION_21
+    targetCompatibility = JavaVersion.VERSION_21
 }
 
 dependencies {
-    testImplementation(platform(libs.junit.bom))
-    testImplementation(libs.junit.jupiter)
-    testRuntimeOnly(libs.junit.platform.launcher)
+    testImplementation(platform("org.junit:junit-bom:5.11.3"))
+    testImplementation("org.junit.jupiter:junit-jupiter")
+    testRuntimeOnly("org.junit.platform:junit-platform-launcher")
 }
 
 tasks.withType<Test>().configureEach {
     useJUnitPlatform()
     finalizedBy(tasks.named("jacocoTestReport"))
-}
-
-jacoco {
-    toolVersion = libs.versions.jacoco.get()
 }
 
 tasks.jacocoTestReport {
@@ -48,17 +42,4 @@ tasks.jacocoTestCoverageVerification {
 
 tasks.check {
     dependsOn(tasks.jacocoTestCoverageVerification)
-}
-
-tasks.register("coverageSummary") {
-    dependsOn(tasks.named("jacocoTestReport"))
-    doLast {
-        val report = layout.buildDirectory.file("reports/jacoco/test/jacocoTestReport.xml").get().asFile
-        val line = Regex("""<counter type="LINE" missed="(\d+)" covered="(\d+)"/>""")
-            .findAll(report.readText())
-            .last()
-        val missed = line.groupValues[1].toLong()
-        val covered = line.groupValues[2].toLong()
-        println("LINE_COVERAGE=%.2f%%".format(100.0 * covered / (covered + missed)))
-    }
 }

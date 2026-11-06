@@ -29,12 +29,14 @@ import app.allinonereminder.model.DayType
 import app.allinonereminder.model.MealAnchor
 import app.allinonereminder.model.MealType
 import app.allinonereminder.ui.appointments.*
+import app.allinonereminder.ui.history.*
 import app.allinonereminder.ui.items.*
 import app.allinonereminder.ui.onboarding.OnboardingScreen
 import app.allinonereminder.ui.permissions.PermissionChecker
 import app.allinonereminder.ui.permissions.PermissionHealthCheckScreen
 import app.allinonereminder.ui.profiles.ProfilesScreen
 import app.allinonereminder.ui.profiles.ProfilesViewModel
+import app.allinonereminder.ui.progress.*
 import app.allinonereminder.ui.settings.SettingsScreen
 import app.allinonereminder.ui.settings.SettingsViewModel
 import app.allinonereminder.ui.today.TodayScreen
@@ -47,6 +49,7 @@ sealed class Screen(val route: String, val title: String, val icon: ImageVector?
     data object Onboarding : Screen("onboarding", "Onboarding")
     data object Today : Screen("today", "Today", Icons.Default.CalendarToday)
     data object Items : Screen("items", "Items", Icons.Default.MedicalServices)
+    data object Progress : Screen("progress", "Progress", Icons.Default.TrendingUp)
     data object Appointments : Screen("appointments", "Visits", Icons.Default.Event)
     data object Profiles : Screen("profiles", "Profiles", Icons.Default.People)
     data object Settings : Screen("settings", "Settings", Icons.Default.Settings)
@@ -56,14 +59,15 @@ sealed class Screen(val route: String, val title: String, val icon: ImageVector?
     data object AppointmentAdd : Screen("appointment/add", "Add Appointment")
     data object AppointmentEdit : Screen("appointment/edit/{appointmentId}", "Edit Appointment")
     data object AppointmentDetail : Screen("appointment/detail/{appointmentId}", "Appointment Detail")
+    data object History : Screen("history", "History")
     data object Permissions : Screen("permissions", "Permissions")
 }
 
 val BOTTOM_BAR_SCREENS = listOf(
     Screen.Today,
     Screen.Items,
+    Screen.Progress,
     Screen.Appointments,
-    Screen.Profiles,
     Screen.Settings
 )
 
@@ -353,6 +357,24 @@ fun MainAppNavigation(
                 )
             }
 
+            // Progress Screen
+            composable(Screen.Progress.route) {
+                val viewModel: ProgressViewModel = hiltViewModel()
+                ProgressScreen(
+                    viewModel = viewModel,
+                    onNavigateToHistory = { navController.navigate(Screen.History.route) }
+                )
+            }
+
+            // History Screen
+            composable(Screen.History.route) {
+                val viewModel: HistoryViewModel = hiltViewModel()
+                HistoryScreen(
+                    viewModel = viewModel,
+                    onBack = { navController.popBackStack() }
+                )
+            }
+
             // 6. Profiles
             composable(Screen.Profiles.route) {
                 val viewModel: ProfilesViewModel = hiltViewModel()
@@ -371,6 +393,7 @@ fun MainAppNavigation(
                 SettingsScreen(
                     uiState = uiState,
                     onNavigateToPermissions = { navController.navigate(Screen.Permissions.route) },
+                    onNavigateToProfiles = { navController.navigate(Screen.Profiles.route) },
                     onUpdateSnooze = viewModel::updateSnoozeMinutes,
                     onUpdateRingDuration = viewModel::updateRingDurationSeconds,
                     onSeedData = {

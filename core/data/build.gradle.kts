@@ -42,6 +42,7 @@ android {
 dependencies {
     implementation(project(":core:model"))
     implementation(project(":core:schedule"))
+    implementation(project(":core:gamify"))
 
     implementation(libs.androidx.core.ktx)
     implementation(libs.kotlinx.coroutines.core)
