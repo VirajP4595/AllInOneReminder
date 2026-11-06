@@ -394,11 +394,32 @@ class OccurrenceRepository(
     }
 
     suspend fun recordAsNeededTaken(occurrence: Occurrence, actedAt: Long = System.currentTimeMillis()): Occurrence {
-        val pendingOcc = occurrence.copy(status = OccurrenceStatus.PENDING, actedAt = null)
+        val takenOcc = occurrence.copy(
+            status = OccurrenceStatus.TAKEN,
+            plannedAt = actedAt,
+            dueAt = actedAt,
+            remindAt = actedAt,
+            actedAt = actedAt,
+            updatedAt = actedAt
+        )
         val block: suspend () -> Occurrence = {
-            occurrenceDao.upsertAll(listOf(pendingOcc.toEntity()))
-            markOccurrenceTaken(occurrence.id, actedAt, occurrence.note)
-            pendingOcc.copy(status = OccurrenceStatus.TAKEN, actedAt = actedAt, updatedAt = actedAt)
+            occurrenceDao.upsertAll(listOf(takenOcc.toEntity()))
+            if (stockEventDao != null) {
+                val item = itemDao?.getByIdSync(occurrence.itemId)
+                val units = item?.unitsPerDose ?: 1.0
+                val stockEventId = UuidV5.generate(UuidV5.OCCURRENCE_NAMESPACE, "stock_${occurrence.id}")
+                stockEventDao.insert(
+                    StockEventEntity(
+                        id = stockEventId,
+                        itemId = occurrence.itemId,
+                        delta = -units,
+                        reason = StockEventReason.TAKEN,
+                        occurrenceId = occurrence.id,
+                        createdAt = actedAt
+                    )
+                )
+            }
+            takenOcc
         }
         return if (database != null) {
             database.withTransaction { block() }
