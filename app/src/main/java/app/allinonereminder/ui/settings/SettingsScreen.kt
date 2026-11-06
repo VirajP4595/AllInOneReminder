@@ -35,6 +35,7 @@ fun SettingsScreen(
     onNavigateToProfiles: () -> Unit = {},
     onUpdateSnooze: (Int) -> Unit = {},
     onUpdateRingDuration: (Int) -> Unit = {},
+    onUpdateSpeakReminders: (Boolean) -> Unit = {},
     onSeedData: () -> Unit = {},
     onCreateBackup: (Uri, String) -> Unit = { _, _ -> },
     onInspectRestore: (Uri, String) -> Unit = { _, _ -> },
@@ -263,6 +264,29 @@ fun SettingsScreen(
                                 )
                             }
                         }
+                    }
+
+                    HorizontalDivider()
+
+                    // Spoken Alarms Toggle (Opt-in)
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text("Speak reminders aloud", fontWeight = FontWeight.SemiBold)
+                            Text(
+                                text = "Speaks reminder aloud when alarm starts (e.g. 'Dad, Metformin 500, one tablet, after breakfast'). Note: medicine names will be spoken aloud.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Switch(
+                            checked = uiState.speakRemindersEnabled,
+                            onCheckedChange = onUpdateSpeakReminders
+                        )
                     }
                 }
             }

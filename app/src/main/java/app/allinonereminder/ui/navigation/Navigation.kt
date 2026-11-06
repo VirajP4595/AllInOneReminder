@@ -396,6 +396,7 @@ fun MainAppNavigation(
                     onNavigateToProfiles = { navController.navigate(Screen.Profiles.route) },
                     onUpdateSnooze = viewModel::updateSnoozeMinutes,
                     onUpdateRingDuration = viewModel::updateRingDurationSeconds,
+                    onUpdateSpeakReminders = viewModel::updateSpeakReminders,
                     onSeedData = {
                         coroutineScope.launch {
                             val msg = sampleDataSeeder.seedSampleData()

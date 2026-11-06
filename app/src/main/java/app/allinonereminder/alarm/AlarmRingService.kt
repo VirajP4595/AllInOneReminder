@@ -15,13 +15,18 @@ import android.os.Looper
 import android.os.VibrationEffect
 import android.os.Vibrator
 import android.os.VibratorManager
+import android.speech.tts.TextToSpeech
 import app.allinonereminder.data.repository.ItemRepository
 import app.allinonereminder.data.repository.OccurrenceRepository
 import app.allinonereminder.data.repository.ProfileRepository
 import app.allinonereminder.data.repository.ScheduleRepository
 import app.allinonereminder.data.repository.SettingsRepository
 import app.allinonereminder.model.Criticality
+import app.allinonereminder.model.Item
+import app.allinonereminder.model.Occurrence
 import app.allinonereminder.model.OccurrenceStatus
+import app.allinonereminder.model.Profile
+import app.allinonereminder.model.ScheduleAnchorType
 import app.allinonereminder.model.effectiveDoseAmount
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.CoroutineExceptionHandler
@@ -31,6 +36,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import java.util.Collections
+import java.util.Locale
 import javax.inject.Inject
 
 @AndroidEntryPoint
@@ -81,6 +87,8 @@ class AlarmRingService : Service() {
 
     private var mediaPlayer: MediaPlayer? = null
     private var vibrator: Vibrator? = null
+    private var textToSpeech: TextToSpeech? = null
+    private var isTtsReady = false
     private val handler = Handler(Looper.getMainLooper())
     private val exceptionHandler = CoroutineExceptionHandler { _, _ -> }
     private val scope = CoroutineScope(coroutineDispatcher + SupervisorJob() + exceptionHandler)
@@ -261,6 +269,9 @@ class AlarmRingService : Service() {
             if (settings.vibrationEnabled) {
                 startVibration()
             }
+            if (settings.speakRemindersEnabled) {
+                speakReminders(occurrences, items, profiles)
+            }
         }
 
         // Auto-silence after ringDurationSeconds (default 120s)
@@ -362,6 +373,68 @@ class AlarmRingService : Service() {
         }
     }
 
+    private fun speakReminders(
+        occurrences: List<Occurrence>,
+        items: List<Item>,
+        profiles: List<Profile>
+    ) {
+        scope.launch {
+            val itemsById = items.associateBy { it.id }
+            val profilesById = profiles.associateBy { it.id }
+            val phrases = occurrences.mapNotNull { occ ->
+                val item = itemsById[occ.itemId] ?: return@mapNotNull null
+                val profile = profilesById[occ.profileId]
+                val schedule = scheduleRepository.getScheduleSync(occ.scheduleId)
+
+                val profileName = profile?.name
+                val doseAmount = effectiveDoseAmount(schedule, item)
+                val doseWithUnit = listOf(doseAmount, item.dosageUnit).filter { it.isNotBlank() }.joinToString(" ")
+                val itemAndDose = listOf(item.name, doseWithUnit).filter { it.isNotBlank() }.joinToString(", ")
+
+                val relation = schedule?.relation
+                val meal = schedule?.meal
+                val timing = when {
+                    schedule?.anchorType == ScheduleAnchorType.MEAL && relation != null && meal != null -> {
+                        val rel = relation.name.lowercase()
+                        val mealName = meal.name.lowercase()
+                        "$rel $mealName"
+                    }
+                    else -> null
+                }
+                val instructions = item.instructions?.takeIf { it.isNotBlank() }
+                val timingAndInstructions = listOfNotNull(timing, instructions).joinToString(", ")
+
+                val parts = listOfNotNull(
+                    profileName?.takeIf { it.isNotBlank() },
+                    itemAndDose.takeIf { it.isNotBlank() },
+                    timingAndInstructions.takeIf { it.isNotBlank() }
+                )
+                parts.joinToString(", ")
+            }
+
+            if (phrases.isEmpty()) return@launch
+
+            val speechText = phrases.joinToString(". ")
+
+            handler.post {
+                try {
+                    if (textToSpeech == null) {
+                        textToSpeech = TextToSpeech(applicationContext) { status ->
+                            if (status == TextToSpeech.SUCCESS) {
+                                isTtsReady = true
+                                textToSpeech?.language = Locale.getDefault()
+                                textToSpeech?.speak(speechText, TextToSpeech.QUEUE_FLUSH, null, "reminder_speech")
+                            }
+                        }
+                    } else if (isTtsReady) {
+                        textToSpeech?.speak(speechText, TextToSpeech.QUEUE_FLUSH, null, "reminder_speech")
+                    }
+                } catch (_: Exception) {
+                }
+            }
+        }
+    }
+
     private fun stopSoundAndVibration() {
         try {
             mediaPlayer?.stop()
@@ -374,11 +447,22 @@ class AlarmRingService : Service() {
             vibrator = null
         } catch (_: Exception) {
         }
+        try {
+            textToSpeech?.stop()
+        } catch (_: Exception) {
+        }
     }
 
     override fun onDestroy() {
         silenceRunnable?.let { handler.removeCallbacks(it) }
         stopSoundAndVibration()
+        isTtsReady = false
+        try {
+            textToSpeech?.stop()
+            textToSpeech?.shutdown()
+        } catch (_: Exception) {
+        }
+        textToSpeech = null
         super.onDestroy()
     }
 }

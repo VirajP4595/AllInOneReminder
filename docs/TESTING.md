@@ -175,6 +175,27 @@ Record pass/fail per device in the pull request description.
 
 ---
 
+### Item 16: History, progress, widget, and spoken alarms (#30)
+**Objective:** Verify gamification rewards (points, streaks, activity rings, badges), adherence calendar history with pure color buckets, Glance home screen widget, and opt-in spoken alarms.
+1. Open Progress tab in bottom navigation:
+   - **Expected Result:** Shows Total Points card with trophy icon, Today's concentric Activity Rings (Meds, Hydration, Movement), Active Streaks list, and Badges achievement grid.
+2. Tap "Adherence Calendar" or navigate to History screen:
+   - **Expected Result:** Month selector (< Month YYYY >) and 7-column calendar grid.
+   - Days with doses show color buckets: Dark Green (100% on time), Light Green (>=80%), Amber (<80% or any skipped), Gray (no doses / future).
+   - Tapping any date reveals dose cards with status, time taken/skipped/missed, and notes.
+3. Add Jetpack Glance widget to Android home screen:
+   - Long-press home screen -> Widgets -> All-in-One Reminder ("Today's Plan").
+   - **Expected Result:** Upcoming dose display ("Next: [Medicine] • [Time]") and activity rings status badges (Meds %, Water %, Move %).
+   - Tapping widget opens the app to Today screen.
+4. Spoken alarms test:
+   - Go to Settings -> Toggle "Speak reminders aloud" ON.
+   - Trigger a non-gentle alarm.
+   - **Expected Result:** TextToSpeech speaks aloud once: "[Profile name], [Medicine name] [Dose] [Unit], [Timing / Instructions]".
+   - Trigger a GENTLE alarm -> verify TTS does NOT speak aloud.
+   - Turn toggle OFF -> verify TTS remains silent on all alarms.
+
+---
+
 
 | # | Scenario | ADB / Device Steps | Expected Result |
 |---|---|---|---|
@@ -193,3 +214,4 @@ Record pass/fail per device in the pull request description.
 | 13 | **Schedules & Taper** | Configure specific days, interval, monthly, PRN, taper | Doses appear at correct times, PRN logs without plan, taper doses apply. |
 | 14 | **Stock ledger & Refills** | Log doses, refill, adjust stock, verify low stock notification | Append-only ledger decrements accurately; refill alert fires once per day. |
 | 15 | **Appointments & Preps** | Create visit with preps and attachment; verify alarm text and FileProvider | Displays "Got it"/"Snooze", prep alarms fire, attachment opens in viewer, backup saves files. |
+| 16 | **History, progress, widget & spoken alarms** | View Progress & History screens; add Glance widget; toggle spoken alarms | Rings & streaks display; calendar color buckets match adherence; widget refreshes; TTS speaks medicine aloud when enabled (silent when GENTLE or disabled). |

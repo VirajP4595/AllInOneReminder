@@ -18,6 +18,7 @@ data class SettingsUiState(
     val defaultSnoozeMinutes: Int = 10,
     val ringDurationSeconds: Int = 120,
     val vibrationEnabled: Boolean = true,
+    val speakRemindersEnabled: Boolean = false,
     val onboardingCompleted: Boolean = true,
     val isProcessing: Boolean = false,
     val message: String? = null,
@@ -48,6 +49,7 @@ class SettingsViewModel @Inject constructor(
             defaultSnoozeMinutes = settings.defaultSnoozeMinutes,
             ringDurationSeconds = settings.ringDurationSeconds,
             vibrationEnabled = settings.vibrationEnabled,
+            speakRemindersEnabled = settings.speakRemindersEnabled,
             onboardingCompleted = settings.onboardingCompleted,
             isProcessing = isProcessing,
             message = msg,
@@ -65,6 +67,12 @@ class SettingsViewModel @Inject constructor(
     fun updateRingDurationSeconds(seconds: Int) {
         viewModelScope.launch {
             settingsRepository.updateSettings(ringDurationSeconds = seconds)
+        }
+    }
+
+    fun updateSpeakReminders(enabled: Boolean) {
+        viewModelScope.launch {
+            settingsRepository.setSpeakRemindersEnabled(enabled)
         }
     }
 
