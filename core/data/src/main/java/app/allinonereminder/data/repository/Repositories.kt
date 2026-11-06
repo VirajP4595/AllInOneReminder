@@ -789,6 +789,16 @@ class AppointmentRepository(
 
         if (newSchedules.isNotEmpty()) {
             scheduleDao.insertAll(newSchedules)
+
+            // The engine never plans a day before the item's startDate, so a reminder that lands on
+            // an earlier day (a prep the day before, a 00:30 visit with a 2h reminder, or an
+            // appointment moved earlier) would be silently dropped. Start the hidden item on the
+            // earliest reminder day, or the appointment day if that is earlier.
+            val apptDate = java.time.Instant.ofEpochMilli(appointment.startAt).atZone(zoneId).toLocalDate().toString()
+            val earliest = (newSchedules.mapNotNull { it.onceDate } + apptDate).minOrNull() ?: apptDate
+            if (hiddenItem.startDate != earliest) {
+                itemDao.update(hiddenItem.copy(startDate = earliest, updatedAt = now))
+            }
         }
     }
 }
