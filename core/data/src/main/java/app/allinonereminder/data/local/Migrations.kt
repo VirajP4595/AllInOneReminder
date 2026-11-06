@@ -45,3 +45,61 @@ val MIGRATION_3_4 = object : Migration(3, 4) {
     }
 }
 
+val MIGRATION_4_5 = object : Migration(4, 5) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE item ADD COLUMN appointmentId TEXT")
+        db.execSQL("CREATE INDEX IF NOT EXISTS `index_item_appointmentId` ON `item` (`appointmentId`)")
+
+        db.execSQL(
+            "CREATE TABLE IF NOT EXISTS `appointment` (" +
+                "`id` TEXT NOT NULL, " +
+                "`profileId` TEXT NOT NULL, " +
+                "`doctor` TEXT NOT NULL, " +
+                "`place` TEXT, " +
+                "`startAt` INTEGER NOT NULL, " +
+                "`purpose` TEXT, " +
+                "`notes` TEXT, " +
+                "`prescriptionNotes` TEXT, " +
+                "`status` TEXT NOT NULL, " +
+                "`remindMinutesBefore` TEXT NOT NULL, " +
+                "`createdAt` INTEGER NOT NULL, " +
+                "`updatedAt` INTEGER NOT NULL, " +
+                "`deletedAt` INTEGER, " +
+                "PRIMARY KEY(`id`), " +
+                "FOREIGN KEY(`profileId`) REFERENCES `profile`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE" +
+                ")"
+        )
+        db.execSQL("CREATE INDEX IF NOT EXISTS `index_appointment_profileId` ON `appointment` (`profileId`)")
+        db.execSQL("CREATE INDEX IF NOT EXISTS `index_appointment_status` ON `appointment` (`status`)")
+        db.execSQL("CREATE INDEX IF NOT EXISTS `index_appointment_startAt` ON `appointment` (`startAt`)")
+        db.execSQL("CREATE INDEX IF NOT EXISTS `index_appointment_deletedAt` ON `appointment` (`deletedAt`)")
+
+        db.execSQL(
+            "CREATE TABLE IF NOT EXISTS `appointment_prep` (" +
+                "`id` TEXT NOT NULL, " +
+                "`appointmentId` TEXT NOT NULL, " +
+                "`text` TEXT NOT NULL, " +
+                "`minutesBefore` INTEGER NOT NULL, " +
+                "`createdAt` INTEGER NOT NULL, " +
+                "PRIMARY KEY(`id`), " +
+                "FOREIGN KEY(`appointmentId`) REFERENCES `appointment`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE" +
+                ")"
+        )
+        db.execSQL("CREATE INDEX IF NOT EXISTS `index_appointment_prep_appointmentId` ON `appointment_prep` (`appointmentId`)")
+
+        db.execSQL(
+            "CREATE TABLE IF NOT EXISTS `appointment_attachment` (" +
+                "`id` TEXT NOT NULL, " +
+                "`appointmentId` TEXT NOT NULL, " +
+                "`filePath` TEXT NOT NULL, " +
+                "`mimeType` TEXT NOT NULL, " +
+                "`createdAt` INTEGER NOT NULL, " +
+                "PRIMARY KEY(`id`), " +
+                "FOREIGN KEY(`appointmentId`) REFERENCES `appointment`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE" +
+                ")"
+        )
+        db.execSQL("CREATE INDEX IF NOT EXISTS `index_appointment_attachment_appointmentId` ON `appointment_attachment` (`appointmentId`)")
+    }
+}
+
+

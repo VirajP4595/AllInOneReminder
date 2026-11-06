@@ -84,3 +84,9 @@ enum class StockEventReason {
     REFILL,
     ADJUST
 }
+
+enum class AppointmentStatus {
+    UPCOMING,
+    DONE,
+    CANCELLED
+}

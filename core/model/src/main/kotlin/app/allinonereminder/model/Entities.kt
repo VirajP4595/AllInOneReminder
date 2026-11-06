@@ -43,6 +43,7 @@ data class Item(
     val maxPerDay: Int? = null, // for PRN (as-needed) items
     val unitsPerDose: Double? = 1.0,
     val refillThreshold: Double? = null,
+    val appointmentId: String? = null,
     val active: Boolean = true,
     val createdAt: Long,
     val updatedAt: Long,
@@ -135,5 +136,37 @@ data class StockEvent(
     val delta: Double,
     val reason: StockEventReason,
     val occurrenceId: String? = null,
+    val createdAt: Long
+)
+
+data class Appointment(
+    val id: String,
+    val profileId: String,
+    val doctor: String,
+    val place: String? = null,
+    val startAt: Long,
+    val purpose: String? = null,
+    val notes: String? = null,
+    val prescriptionNotes: String? = null,
+    val status: AppointmentStatus = AppointmentStatus.UPCOMING,
+    val remindMinutesBefore: String = "120,30",
+    val createdAt: Long,
+    val updatedAt: Long,
+    val deletedAt: Long? = null
+)
+
+data class AppointmentPrep(
+    val id: String,
+    val appointmentId: String,
+    val text: String,
+    val minutesBefore: Int,
+    val createdAt: Long = System.currentTimeMillis()
+)
+
+data class AppointmentAttachment(
+    val id: String,
+    val appointmentId: String,
+    val filePath: String,
+    val mimeType: String,
     val createdAt: Long
 )

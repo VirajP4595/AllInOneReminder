@@ -1,10 +1,14 @@
 package app.allinonereminder.data
 
 import app.allinonereminder.alarm.AlarmCoordinator
+import app.allinonereminder.data.repository.AppointmentRepository
 import app.allinonereminder.data.repository.ItemRepository
 import app.allinonereminder.data.repository.ProfileRepository
 import app.allinonereminder.data.repository.ScheduleRepository
 import app.allinonereminder.data.repository.SettingsRepository
+import app.allinonereminder.model.Appointment
+import app.allinonereminder.model.AppointmentPrep
+import app.allinonereminder.model.AppointmentStatus
 import app.allinonereminder.model.Criticality
 import app.allinonereminder.model.Item
 import app.allinonereminder.model.ItemType
@@ -27,6 +31,7 @@ class SampleDataSeeder @Inject constructor(
     private val profileRepository: ProfileRepository,
     private val itemRepository: ItemRepository,
     private val scheduleRepository: ScheduleRepository,
+    private val appointmentRepository: AppointmentRepository,
     private val settingsRepository: SettingsRepository,
     private val alarmCoordinator: AlarmCoordinator
 ) {
@@ -159,8 +164,42 @@ class SampleDataSeeder @Inject constructor(
         )
         scheduleRepository.createSchedule(sched3, deviceId)
 
+        // 4. Sample Appointment tomorrow
+        val apptId = UUID.randomUUID().toString()
+        val tomorrow = LocalDate.now(zone).plusDays(1)
+        val apptStartAt = tomorrow.atTime(10, 30).atZone(zone).toInstant().toEpochMilli()
+        val sampleAppt = Appointment(
+            id = apptId,
+            profileId = profile.id,
+            doctor = "Dr. Sarah Jenkins",
+            place = "City Heart Clinic, Suite 402",
+            startAt = apptStartAt,
+            purpose = "Annual Cardiology Checkup",
+            notes = "Discuss blood pressure readings and lipid panel.",
+            prescriptionNotes = null,
+            status = AppointmentStatus.UPCOMING,
+            remindMinutesBefore = "120,30",
+            createdAt = System.currentTimeMillis(),
+            updatedAt = System.currentTimeMillis()
+        )
+        val samplePreps = listOf(
+            AppointmentPrep(
+                id = UUID.randomUUID().toString(),
+                appointmentId = apptId,
+                text = "Fast from 22:00 night before (water only)",
+                minutesBefore = 600
+            ),
+            AppointmentPrep(
+                id = UUID.randomUUID().toString(),
+                appointmentId = apptId,
+                text = "Bring recent lipid panel & ECG reports",
+                minutesBefore = 120
+            )
+        )
+        appointmentRepository.saveAppointment(sampleAppt, samplePreps, deviceId)
+
         val result = alarmCoordinator.reschedule("SampleDataSeeder")
-        return "Sample data seeded: 3 items created for ${profile.name}. Next alarm registered: ${result.registered}."
+        return "Sample data seeded: 3 items and 1 doctor visit created for ${profile.name}. Next alarm registered: ${result.registered}."
     }
 }
 

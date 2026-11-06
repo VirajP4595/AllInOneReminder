@@ -1,6 +1,7 @@
 package app.allinonereminder.data.local.converter
 
 import androidx.room.TypeConverter
+import app.allinonereminder.model.AppointmentStatus
 import app.allinonereminder.model.Criticality
 import app.allinonereminder.model.DayType
 import app.allinonereminder.model.ItemType
@@ -72,5 +73,11 @@ class RoomConverters {
 
     @TypeConverter
     fun toStockEventReason(value: String?): StockEventReason? = value?.let { StockEventReason.valueOf(it) }
+
+    @TypeConverter
+    fun fromAppointmentStatus(value: AppointmentStatus?): String? = value?.name
+
+    @TypeConverter
+    fun toAppointmentStatus(value: String?): AppointmentStatus? = value?.let { AppointmentStatus.valueOf(it) }
 }
 

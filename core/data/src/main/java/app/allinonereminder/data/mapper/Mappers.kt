@@ -1,5 +1,8 @@
 package app.allinonereminder.data.mapper
 
+import app.allinonereminder.data.local.entity.AppointmentAttachmentEntity
+import app.allinonereminder.data.local.entity.AppointmentEntity
+import app.allinonereminder.data.local.entity.AppointmentPrepEntity
 import app.allinonereminder.data.local.entity.ChangeLogEntity
 import app.allinonereminder.data.local.entity.ItemEntity
 import app.allinonereminder.data.local.entity.ItemPhotoEntity
@@ -9,6 +12,9 @@ import app.allinonereminder.data.local.entity.OccurrenceEntity
 import app.allinonereminder.data.local.entity.ProfileEntity
 import app.allinonereminder.data.local.entity.ScheduleEntity
 import app.allinonereminder.data.local.entity.StockEventEntity
+import app.allinonereminder.model.Appointment
+import app.allinonereminder.model.AppointmentAttachment
+import app.allinonereminder.model.AppointmentPrep
 import app.allinonereminder.model.ChangeLog
 import app.allinonereminder.model.Item
 import app.allinonereminder.model.ItemPhoto
@@ -84,6 +90,7 @@ fun ItemEntity.toDomain() = Item(
     maxPerDay = maxPerDay,
     unitsPerDose = unitsPerDose,
     refillThreshold = refillThreshold,
+    appointmentId = appointmentId,
     active = active,
     createdAt = createdAt,
     updatedAt = updatedAt,
@@ -111,6 +118,7 @@ fun Item.toEntity() = ItemEntity(
     maxPerDay = maxPerDay,
     unitsPerDose = unitsPerDose,
     refillThreshold = refillThreshold,
+    appointmentId = appointmentId,
     active = active,
     createdAt = createdAt,
     updatedAt = updatedAt,
@@ -278,5 +286,70 @@ fun StockEvent.toEntity() = StockEventEntity(
     occurrenceId = occurrenceId,
     createdAt = createdAt
 )
+
+fun AppointmentEntity.toDomain() = Appointment(
+    id = id,
+    profileId = profileId,
+    doctor = doctor,
+    place = place,
+    startAt = startAt,
+    purpose = purpose,
+    notes = notes,
+    prescriptionNotes = prescriptionNotes,
+    status = status,
+    remindMinutesBefore = remindMinutesBefore,
+    createdAt = createdAt,
+    updatedAt = updatedAt,
+    deletedAt = deletedAt
+)
+
+fun Appointment.toEntity() = AppointmentEntity(
+    id = id,
+    profileId = profileId,
+    doctor = doctor,
+    place = place,
+    startAt = startAt,
+    purpose = purpose,
+    notes = notes,
+    prescriptionNotes = prescriptionNotes,
+    status = status,
+    remindMinutesBefore = remindMinutesBefore,
+    createdAt = createdAt,
+    updatedAt = updatedAt,
+    deletedAt = deletedAt
+)
+
+fun AppointmentPrepEntity.toDomain() = AppointmentPrep(
+    id = id,
+    appointmentId = appointmentId,
+    text = text,
+    minutesBefore = minutesBefore,
+    createdAt = createdAt
+)
+
+fun AppointmentPrep.toEntity() = AppointmentPrepEntity(
+    id = id,
+    appointmentId = appointmentId,
+    text = text,
+    minutesBefore = minutesBefore,
+    createdAt = createdAt
+)
+
+fun AppointmentAttachmentEntity.toDomain() = AppointmentAttachment(
+    id = id,
+    appointmentId = appointmentId,
+    filePath = filePath,
+    mimeType = mimeType,
+    createdAt = createdAt
+)
+
+fun AppointmentAttachment.toEntity() = AppointmentAttachmentEntity(
+    id = id,
+    appointmentId = appointmentId,
+    filePath = filePath,
+    mimeType = mimeType,
+    createdAt = createdAt
+)
+
 
 

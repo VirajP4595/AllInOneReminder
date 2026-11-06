@@ -68,6 +68,9 @@ class BackupManager @Inject constructor(
         val mealSessions = db.mealSessionDao().getAllSync()
         val changeLogs = db.changeLogDao().getAllSync()
         val stockEvents = db.stockEventDao().getAllStockEvents()
+        val appointments = db.appointmentDao().getAllSync()
+        val appointmentPreps = db.appointmentPrepDao().getAllSync()
+        val appointmentAttachments = db.appointmentAttachmentDao().getAllSync()
 
         val rootJson = JSONObject().apply {
             put("version", VERSION)
@@ -81,9 +84,12 @@ class BackupManager @Inject constructor(
             put("mealSessions", serializeMealSessions(mealSessions))
             put("changeLogs", serializeChangeLogs(changeLogs))
             put("stockEvents", serializeStockEvents(stockEvents))
+            put("appointments", serializeAppointments(appointments))
+            put("appointmentPreps", serializeAppointmentPreps(appointmentPreps))
+            put("appointmentAttachments", serializeAppointmentAttachments(appointmentAttachments))
         }
 
-        // 2. Build ZIP archive with backup.json and photos
+        // 2. Build ZIP archive with backup.json, photos, and attachments
         val zipBaos = ByteArrayOutputStream()
         ZipOutputStream(zipBaos).use { zos ->
             // Add backup.json
@@ -98,6 +104,16 @@ class BackupManager @Inject constructor(
                 photosDir.listFiles()?.filter { it.isFile }?.forEach { photoFile ->
                     zos.putNextEntry(ZipEntry("photos/${photoFile.name}"))
                     photoFile.inputStream().use { it.copyTo(zos) }
+                    zos.closeEntry()
+                }
+            }
+
+            // Add attachments from context.filesDir/attachments
+            val attachmentsDir = File(context.filesDir, "attachments")
+            if (attachmentsDir.exists() && attachmentsDir.isDirectory) {
+                attachmentsDir.listFiles()?.filter { it.isFile }?.forEach { attFile ->
+                    zos.putNextEntry(ZipEntry("attachments/${attFile.name}"))
+                    attFile.inputStream().use { it.copyTo(zos) }
                     zos.closeEntry()
                 }
             }
@@ -137,10 +153,16 @@ class BackupManager @Inject constructor(
         if (!photosDir.exists()) {
             photosDir.mkdirs()
         }
+        val attachmentsDir = File(context.filesDir, "attachments")
+        if (!attachmentsDir.exists()) {
+            attachmentsDir.mkdirs()
+        }
 
-        // Extract photos to temp dir first per §18 review B5(d)
+        // Extract photos and attachments to temp dirs first per §18 review B5(d)
         val tempPhotosDir = File(context.cacheDir, "backup_restore_temp_${System.currentTimeMillis()}")
         tempPhotosDir.mkdirs()
+        val tempAttachmentsDir = File(context.cacheDir, "backup_restore_att_${System.currentTimeMillis()}")
+        tempAttachmentsDir.mkdirs()
 
         try {
             var photoCount = 0
@@ -165,6 +187,18 @@ class BackupManager @Inject constructor(
                             zis.copyTo(fos)
                         }
                         photoCount++
+                    } else if (entry.name.startsWith("attachments/") && !entry.isDirectory) {
+                        val fileName = entry.name.removePrefix("attachments/")
+                        if (fileName.contains("/") || fileName.contains("\\") || fileName.contains("..")) {
+                            throw InvalidBackupFileException("Zip Slip detected: invalid file name in archive: $fileName")
+                        }
+                        val tempFile = File(tempAttachmentsDir, fileName)
+                        if (!tempFile.canonicalPath.startsWith(tempAttachmentsDir.canonicalPath + File.separator)) {
+                            throw InvalidBackupFileException("Zip Slip detected: target outside attachment dir: ${tempFile.canonicalPath}")
+                        }
+                        FileOutputStream(tempFile).use { fos ->
+                            zis.copyTo(fos)
+                        }
                     }
                     zis.closeEntry()
                     entry = zis.nextEntry
@@ -185,9 +219,15 @@ class BackupManager @Inject constructor(
             val mealSessions = deserializeMealSessions(json.optJSONArray("mealSessions"))
             val changeLogs = deserializeChangeLogs(json.optJSONArray("changeLogs"))
             val stockEvents = deserializeStockEvents(json.optJSONArray("stockEvents"))
+            val appointments = deserializeAppointments(json.optJSONArray("appointments"))
+            val appointmentPreps = deserializeAppointmentPreps(json.optJSONArray("appointmentPreps"))
+            val appointmentAttachments = deserializeAppointmentAttachments(json.optJSONArray("appointmentAttachments"))
 
             // Atomically replace all database tables
             db.withTransaction {
+                db.appointmentAttachmentDao().deleteAll()
+                db.appointmentPrepDao().deleteAll()
+                db.appointmentDao().deleteAll()
                 db.stockEventDao().deleteAll()
                 db.changeLogDao().deleteAll()
                 db.occurrenceDao().deleteAll()
@@ -207,12 +247,21 @@ class BackupManager @Inject constructor(
                 db.mealSessionDao().insertAll(mealSessions)
                 db.changeLogDao().insertAll(changeLogs)
                 db.stockEventDao().insertAll(stockEvents)
+                db.appointmentDao().insertAll(appointments)
+                db.appointmentPrepDao().insertAll(appointmentPreps)
+                db.appointmentAttachmentDao().insertAll(appointmentAttachments)
             }
 
             // Only swap in photos AFTER DB transaction succeeds
             tempPhotosDir.listFiles()?.filter { it.isFile }?.forEach { tempPhoto ->
                 val targetFile = File(photosDir, tempPhoto.name)
                 tempPhoto.copyTo(targetFile, overwrite = true)
+            }
+
+            // Swap in attachments AFTER DB transaction succeeds
+            tempAttachmentsDir.listFiles()?.filter { it.isFile }?.forEach { tempAtt ->
+                val targetFile = File(attachmentsDir, tempAtt.name)
+                tempAtt.copyTo(targetFile, overwrite = true)
             }
 
             // Delete unreferenced photos after restore
@@ -223,12 +272,21 @@ class BackupManager @Inject constructor(
                 }
             }
 
+            // Delete unreferenced attachments after restore
+            val referencedAttNames = appointmentAttachments.map { File(it.filePath).name }.toSet()
+            attachmentsDir.listFiles()?.filter { it.isFile }?.forEach { attFile ->
+                if (attFile.name !in referencedAttNames) {
+                    attFile.delete()
+                }
+            }
+
             // Reschedule alarms immediately with restored dataset
             alarmCoordinator.reschedule("restore_from_backup")
 
             parsePreview(json, photoCount)
         } finally {
             tempPhotosDir.deleteRecursively()
+            tempAttachmentsDir.deleteRecursively()
         }
     }
 
@@ -392,6 +450,7 @@ class BackupManager @Inject constructor(
                 putOpt("maxPerDay", item.maxPerDay)
                 putOpt("unitsPerDose", item.unitsPerDose)
                 putOpt("refillThreshold", item.refillThreshold)
+                putOpt("appointmentId", item.appointmentId)
                 put("createdAt", item.createdAt)
                 put("updatedAt", item.updatedAt)
                 putOpt("deletedAt", item.deletedAt)
@@ -423,6 +482,7 @@ class BackupManager @Inject constructor(
                     maxPerDay = if (o.isNull("maxPerDay")) null else o.getInt("maxPerDay"),
                     unitsPerDose = if (o.isNull("unitsPerDose")) 1.0 else o.optDouble("unitsPerDose", 1.0),
                     refillThreshold = if (o.isNull("refillThreshold")) null else o.optDouble("refillThreshold"),
+                    appointmentId = if (o.isNull("appointmentId")) null else o.getString("appointmentId"),
                     createdAt = o.getLong("createdAt"),
                     updatedAt = o.getLong("updatedAt"),
                     deletedAt = if (o.isNull("deletedAt")) null else o.getLong("deletedAt")
@@ -718,5 +778,119 @@ class BackupManager @Inject constructor(
         }
         return list
     }
+
+    private fun serializeAppointments(list: List<AppointmentEntity>): JSONArray = JSONArray().apply {
+        list.forEach { a ->
+            put(JSONObject().apply {
+                put("id", a.id)
+                put("profileId", a.profileId)
+                put("doctor", a.doctor)
+                putOpt("place", a.place)
+                put("startAt", a.startAt)
+                putOpt("purpose", a.purpose)
+                putOpt("notes", a.notes)
+                putOpt("prescriptionNotes", a.prescriptionNotes)
+                put("status", a.status.name)
+                put("remindMinutesBefore", a.remindMinutesBefore)
+                put("createdAt", a.createdAt)
+                put("updatedAt", a.updatedAt)
+                putOpt("deletedAt", a.deletedAt)
+            })
+        }
+    }
+
+    private fun deserializeAppointments(array: JSONArray?): List<AppointmentEntity> {
+        if (array == null) return emptyList()
+        val list = mutableListOf<AppointmentEntity>()
+        for (i in 0 until array.length()) {
+            val o = array.getJSONObject(i)
+            list.add(
+                AppointmentEntity(
+                    id = o.getString("id"),
+                    profileId = o.getString("profileId"),
+                    doctor = o.getString("doctor"),
+                    place = if (o.isNull("place")) null else o.getString("place"),
+                    startAt = o.getLong("startAt"),
+                    purpose = if (o.isNull("purpose")) null else o.getString("purpose"),
+                    notes = if (o.isNull("notes")) null else o.getString("notes"),
+                    prescriptionNotes = if (o.isNull("prescriptionNotes")) null else o.getString("prescriptionNotes"),
+                    status = if (o.isNull("status")) AppointmentStatus.UPCOMING else AppointmentStatus.valueOf(o.getString("status")),
+                    remindMinutesBefore = o.optString("remindMinutesBefore", "120,30"),
+                    createdAt = o.getLong("createdAt"),
+                    updatedAt = o.getLong("updatedAt"),
+                    deletedAt = if (o.isNull("deletedAt")) null else o.getLong("deletedAt")
+                )
+            )
+        }
+        return list
+    }
+
+    private fun serializeAppointmentPreps(list: List<AppointmentPrepEntity>): JSONArray = JSONArray().apply {
+        list.forEach { p ->
+            put(JSONObject().apply {
+                put("id", p.id)
+                put("appointmentId", p.appointmentId)
+                put("text", p.text)
+                put("minutesBefore", p.minutesBefore)
+                put("createdAt", p.createdAt)
+            })
+        }
+    }
+
+    private fun deserializeAppointmentPreps(array: JSONArray?): List<AppointmentPrepEntity> {
+        if (array == null) return emptyList()
+        val list = mutableListOf<AppointmentPrepEntity>()
+        for (i in 0 until array.length()) {
+            val o = array.getJSONObject(i)
+            list.add(
+                AppointmentPrepEntity(
+                    id = o.getString("id"),
+                    appointmentId = o.getString("appointmentId"),
+                    text = o.getString("text"),
+                    minutesBefore = o.getInt("minutesBefore"),
+                    createdAt = o.getLong("createdAt")
+                )
+            )
+        }
+        return list
+    }
+
+    private fun serializeAppointmentAttachments(list: List<AppointmentAttachmentEntity>): JSONArray = JSONArray().apply {
+        list.forEach { a ->
+            put(JSONObject().apply {
+                put("id", a.id)
+                put("appointmentId", a.appointmentId)
+                val relPath = "attachments/" + File(a.filePath).name
+                put("filePath", relPath)
+                put("mimeType", a.mimeType)
+                put("createdAt", a.createdAt)
+            })
+        }
+    }
+
+    private fun deserializeAppointmentAttachments(array: JSONArray?): List<AppointmentAttachmentEntity> {
+        if (array == null) return emptyList()
+        val list = mutableListOf<AppointmentAttachmentEntity>()
+        for (i in 0 until array.length()) {
+            val o = array.getJSONObject(i)
+            val rawPath = o.getString("filePath")
+            val resolvedPath = if (rawPath.startsWith("attachments/")) {
+                File(context.filesDir, rawPath).absolutePath
+            } else {
+                rawPath
+            }
+            list.add(
+                AppointmentAttachmentEntity(
+                    id = o.getString("id"),
+                    appointmentId = o.getString("appointmentId"),
+                    filePath = resolvedPath,
+                    mimeType = o.getString("mimeType"),
+                    createdAt = o.getLong("createdAt")
+                )
+            )
+        }
+        return list
+    }
 }
+
 

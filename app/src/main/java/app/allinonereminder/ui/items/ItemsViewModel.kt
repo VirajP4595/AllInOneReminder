@@ -69,6 +69,7 @@ class ItemsViewModel @Inject constructor(
 
         val filteredItems = allItems
             .filter { item ->
+                item.appointmentId == null &&
                 (selectedProfileId == null || item.profileId == selectedProfileId) &&
                 (selectedTypeFilter == null || item.type == selectedTypeFilter)
             }

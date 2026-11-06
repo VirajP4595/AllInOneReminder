@@ -540,8 +540,13 @@ private fun OccurrenceTimelineCard(
                         style = MaterialTheme.typography.titleLarge,
                         fontWeight = FontWeight.Bold
                     )
+                    val doseLabel = if (item.type == ItemType.APPOINTMENT) {
+                        effectiveDoseAmount(uiModel.schedule, item)
+                    } else {
+                        "${effectiveDoseAmount(uiModel.schedule, item)} ${item.dosageUnit} ${item.form ?: ""}".trim()
+                    }
                     Text(
-                        text = "${effectiveDoseAmount(uiModel.schedule, item)} ${item.dosageUnit} ${item.form ?: ""}",
+                        text = doseLabel,
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -586,7 +591,7 @@ private fun OccurrenceTimelineCard(
                             .weight(1.2f)
                             .defaultMinSize(minHeight = 44.dp)
                     ) {
-                        Text("Take")
+                        Text(if (item.type == ItemType.APPOINTMENT) "Got it" else "Take")
                     }
                     OutlinedButton(
                         onClick = onSnooze,

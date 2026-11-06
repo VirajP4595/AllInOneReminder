@@ -60,6 +60,7 @@ import app.allinonereminder.data.repository.OccurrenceRepository
 import app.allinonereminder.data.repository.ProfileRepository
 import app.allinonereminder.data.repository.ScheduleRepository
 import app.allinonereminder.model.Item
+import app.allinonereminder.model.ItemType
 import app.allinonereminder.model.MealRelation
 import app.allinonereminder.model.Occurrence
 import app.allinonereminder.model.OccurrenceStatus
@@ -536,7 +537,8 @@ fun AlarmScreenContent(
                 ) {
                     Icon(Icons.Default.Check, contentDescription = null)
                     Spacer(modifier = Modifier.width(8.dp))
-                    Text("All Taken (${state.items.size})", fontSize = 18.sp)
+                    val allActionLabel = if (state.items.all { it.item.type == ItemType.APPOINTMENT }) "All Acknowledged" else "All Taken"
+                    Text("$allActionLabel (${state.items.size})", fontSize = 18.sp)
                 }
                 Spacer(modifier = Modifier.height(16.dp))
             }
@@ -575,6 +577,8 @@ fun AlarmItemCard(
 ) {
     var showMealDeferralMenu by remember { mutableStateOf(false) }
 
+    val isAppointment = uiModel.item.type == ItemType.APPOINTMENT
+
     Card(
         modifier = Modifier.fillMaxWidth(),
         elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
@@ -586,8 +590,13 @@ fun AlarmItemCard(
                 fontWeight = FontWeight.Bold
             )
             Spacer(modifier = Modifier.height(4.dp))
+            val doseDesc = if (isAppointment) {
+                effectiveDoseAmount(uiModel.schedule, uiModel.item)
+            } else {
+                "${effectiveDoseAmount(uiModel.schedule, uiModel.item)} ${uiModel.item.dosageUnit} ${uiModel.item.form ?: ""}".trim()
+            }
             Text(
-                text = "${effectiveDoseAmount(uiModel.schedule, uiModel.item)} ${uiModel.item.dosageUnit} ${uiModel.item.form ?: ""}",
+                text = doseDesc,
                 fontSize = 20.sp,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
@@ -634,7 +643,7 @@ fun AlarmItemCard(
                 ) {
                     Icon(Icons.Default.Check, contentDescription = null)
                     Spacer(modifier = Modifier.width(4.dp))
-                    Text("Taken", fontSize = 16.sp)
+                    Text(if (isAppointment) "Got it" else "Taken", fontSize = 16.sp)
                 }
 
                 Button(
@@ -647,13 +656,15 @@ fun AlarmItemCard(
                     Text("Snooze", fontSize = 16.sp)
                 }
 
-                OutlinedButton(
-                    onClick = onSkip,
-                    modifier = Modifier.weight(1f)
-                ) {
-                    Icon(Icons.Default.Close, contentDescription = null)
-                    Spacer(modifier = Modifier.width(4.dp))
-                    Text("Skip", fontSize = 16.sp)
+                if (!isAppointment) {
+                    OutlinedButton(
+                        onClick = onSkip,
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Icon(Icons.Default.Close, contentDescription = null)
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text("Skip", fontSize = 16.sp)
+                    }
                 }
             }
 

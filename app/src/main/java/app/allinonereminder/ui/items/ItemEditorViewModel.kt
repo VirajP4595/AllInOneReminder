@@ -99,7 +99,7 @@ class ItemEditorViewModel @Inject constructor(
                 val scheds = scheduleRepository.getActiveSchedules(editItemId).firstOrNull() ?: emptyList()
                 val photos = itemRepository.getPhotosSync(editItemId)
 
-                if (item != null) {
+                if (item != null && item.appointmentId == null) {
                     val stock = if (stockEventRepository?.hasStockEvents(item.id) == true) stockEventRepository.getCurrentStockSync(item.id) else null
                     val currentStockStr = stock?.let { if (it % 1.0 == 0.0) it.toInt().toString() else it.toString() } ?: ""
                     val unitsStr = item.unitsPerDose?.let { if (it % 1.0 == 0.0) it.toInt().toString() else it.toString() } ?: "1.0"

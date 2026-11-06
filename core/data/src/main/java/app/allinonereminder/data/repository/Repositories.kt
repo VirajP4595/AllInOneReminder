@@ -2,6 +2,9 @@ package app.allinonereminder.data.repository
 
 import app.allinonereminder.data.local.ChangeLogWriter
 import app.allinonereminder.data.local.DefaultMealAnchors
+import app.allinonereminder.data.local.dao.AppointmentAttachmentDao
+import app.allinonereminder.data.local.dao.AppointmentDao
+import app.allinonereminder.data.local.dao.AppointmentPrepDao
 import app.allinonereminder.data.local.dao.ChangeLogDao
 import app.allinonereminder.data.local.dao.ItemDao
 import app.allinonereminder.data.local.dao.ItemPhotoDao
@@ -11,21 +14,34 @@ import app.allinonereminder.data.local.dao.OccurrenceDao
 import app.allinonereminder.data.local.dao.ProfileDao
 import app.allinonereminder.data.local.dao.ScheduleDao
 import app.allinonereminder.data.local.dao.StockEventDao
+import app.allinonereminder.data.local.entity.AppointmentAttachmentEntity
+import app.allinonereminder.data.local.entity.AppointmentEntity
+import app.allinonereminder.data.local.entity.AppointmentPrepEntity
+import app.allinonereminder.data.local.entity.ScheduleEntity
 import app.allinonereminder.data.local.entity.StockEventEntity
 import app.allinonereminder.data.mapper.toDomain
 import app.allinonereminder.data.mapper.toEntity
+import app.allinonereminder.model.Appointment
+import app.allinonereminder.model.AppointmentAttachment
+import app.allinonereminder.model.AppointmentPrep
+import app.allinonereminder.model.AppointmentStatus
 import app.allinonereminder.model.ChangeLog
+import app.allinonereminder.model.Criticality
 import app.allinonereminder.model.Item
 import app.allinonereminder.model.ItemPhoto
+import app.allinonereminder.model.ItemType
 import app.allinonereminder.model.MealAnchor
 import app.allinonereminder.model.MealSession
 import app.allinonereminder.model.MealType
 import app.allinonereminder.model.Occurrence
 import app.allinonereminder.model.OccurrenceStatus
 import app.allinonereminder.model.Profile
+import app.allinonereminder.model.RecurrenceType
 import app.allinonereminder.model.Schedule
+import app.allinonereminder.model.ScheduleAnchorType
 import app.allinonereminder.model.StockEvent
 import app.allinonereminder.model.StockEventReason
+import app.allinonereminder.model.TimePolicy
 import app.allinonereminder.model.UuidV5
 import kotlinx.coroutines.flow.Flow
 import androidx.room.withTransaction
@@ -563,5 +579,219 @@ class StockEventRepository(
         return event
     }
 }
+
+class AppointmentRepository(
+    private val appointmentDao: AppointmentDao,
+    private val appointmentPrepDao: AppointmentPrepDao,
+    private val appointmentAttachmentDao: AppointmentAttachmentDao,
+    private val itemDao: ItemDao,
+    private val scheduleDao: ScheduleDao,
+    private val database: AppDatabase,
+    private val changeLogWriter: ChangeLogWriter
+) {
+    fun getAllAppointments(): Flow<List<Appointment>> =
+        appointmentDao.getAllActive().map { list -> list.map { it.toDomain() } }
+
+    fun getAppointmentsByProfile(profileId: String): Flow<List<Appointment>> =
+        appointmentDao.getActiveByProfile(profileId).map { list -> list.map { it.toDomain() } }
+
+    fun getAppointment(id: String): Flow<Appointment?> =
+        appointmentDao.getById(id).map { it?.toDomain() }
+
+    suspend fun getAppointmentSync(id: String): Appointment? =
+        appointmentDao.getByIdSync(id)?.toDomain()
+
+    fun getPrepsForAppointment(appointmentId: String): Flow<List<AppointmentPrep>> =
+        appointmentPrepDao.getByAppointmentIdFlow(appointmentId).map { list -> list.map { it.toDomain() } }
+
+    suspend fun getPrepsForAppointmentSync(appointmentId: String): List<AppointmentPrep> =
+        appointmentPrepDao.getByAppointmentIdSync(appointmentId).map { it.toDomain() }
+
+    fun getAttachmentsForAppointment(appointmentId: String): Flow<List<AppointmentAttachment>> =
+        appointmentAttachmentDao.getByAppointmentIdFlow(appointmentId).map { list -> list.map { it.toDomain() } }
+
+    suspend fun getAttachmentsForAppointmentSync(appointmentId: String): List<AppointmentAttachment> =
+        appointmentAttachmentDao.getByAppointmentIdSync(appointmentId).map { it.toDomain() }
+
+    suspend fun saveAppointment(
+        appointment: Appointment,
+        preps: List<AppointmentPrep>,
+        deviceId: String,
+        zoneId: java.time.ZoneId = java.time.ZoneId.systemDefault()
+    ) {
+        val now = System.currentTimeMillis()
+        database.withTransaction {
+            val existing = appointmentDao.getByIdSync(appointment.id)
+            val apptEntity = appointment.copy(updatedAt = now).toEntity()
+            if (existing == null) {
+                appointmentDao.insert(apptEntity)
+                changeLogWriter.recordChange("appointment", appointment.id, "created", null, appointment.doctor, now, deviceId)
+            } else {
+                appointmentDao.update(apptEntity)
+                changeLogWriter.recordChange("appointment", appointment.id, "updated", null, appointment.doctor, now, deviceId)
+            }
+
+            // Sync preps
+            appointmentPrepDao.deleteByAppointmentId(appointment.id)
+            if (preps.isNotEmpty()) {
+                appointmentPrepDao.insertAll(preps.map { it.toEntity() })
+            }
+
+            // Materialize hidden item & schedules
+            syncHiddenItemAndSchedules(appointment, preps, now, zoneId)
+        }
+    }
+
+    suspend fun updateStatus(id: String, status: AppointmentStatus, deviceId: String) {
+        val now = System.currentTimeMillis()
+        database.withTransaction {
+            appointmentDao.updateStatus(id, status.name, now)
+            val appt = appointmentDao.getByIdSync(id)?.toDomain()
+            if (appt != null) {
+                val preps = appointmentPrepDao.getByAppointmentIdSync(id).map { it.toDomain() }
+                syncHiddenItemAndSchedules(appt, preps, now, java.time.ZoneId.systemDefault())
+            }
+            changeLogWriter.recordChange("appointment", id, "status", null, status.name, now, deviceId)
+        }
+    }
+
+    suspend fun deleteAppointment(id: String, deviceId: String) {
+        val now = System.currentTimeMillis()
+        database.withTransaction {
+            appointmentDao.softDelete(id, now)
+            val hiddenItem = itemDao.getByAppointmentIdSync(id)
+            itemDao.softDeleteByAppointmentId(id, now)
+            if (hiddenItem != null) {
+                scheduleDao.softDeleteByItemId(hiddenItem.id, now)
+            }
+            changeLogWriter.recordChange("appointment", id, "deletedAt", null, now.toString(), now, deviceId)
+        }
+    }
+
+    suspend fun addAttachment(attachment: AppointmentAttachment) {
+        appointmentAttachmentDao.insert(attachment.toEntity())
+    }
+
+    suspend fun deleteAttachment(id: String) {
+        appointmentAttachmentDao.deleteById(id)
+    }
+
+    private suspend fun syncHiddenItemAndSchedules(
+        appointment: Appointment,
+        preps: List<AppointmentPrep>,
+        now: Long,
+        zoneId: java.time.ZoneId
+    ) {
+        var hiddenItem = itemDao.getByAppointmentIdSync(appointment.id)
+        val isUpcoming = appointment.status == AppointmentStatus.UPCOMING && appointment.deletedAt == null
+
+        val placeDesc = appointment.place?.takeIf { it.isNotBlank() }
+        val purposeDesc = appointment.purpose?.takeIf { it.isNotBlank() }
+        val instructionText = listOfNotNull(purposeDesc, placeDesc?.let { "at $it" }).joinToString(", ")
+
+        if (hiddenItem == null) {
+            val newItem = Item(
+                id = UUID.randomUUID().toString(),
+                profileId = appointment.profileId,
+                type = ItemType.APPOINTMENT,
+                name = appointment.doctor,
+                dosageAmount = "",
+                dosageUnit = "",
+                instructions = instructionText.ifBlank { null },
+                criticality = Criticality.NORMAL,
+                timePolicy = TimePolicy.LOCAL_WALL_CLOCK,
+                homeZoneId = zoneId.id,
+                startDate = java.time.Instant.ofEpochMilli(appointment.startAt).atZone(zoneId).toLocalDate().toString(),
+                appointmentId = appointment.id,
+                active = isUpcoming,
+                createdAt = now,
+                updatedAt = now
+            )
+            itemDao.insert(newItem.toEntity())
+            hiddenItem = newItem.toEntity()
+        } else {
+            val updated = hiddenItem.copy(
+                name = appointment.doctor,
+                instructions = instructionText.ifBlank { null },
+                profileId = appointment.profileId,
+                active = isUpcoming,
+                updatedAt = now
+            )
+            itemDao.update(updated)
+            hiddenItem = updated
+        }
+
+        // Soft-delete previous schedules for this hidden item
+        scheduleDao.softDeleteByItemId(hiddenItem.id, now)
+
+        if (!isUpcoming) return
+
+        val newSchedules = mutableListOf<ScheduleEntity>()
+
+        // 1. Visit reminders from remindMinutesBefore (e.g. "120,30")
+        val reminderMinutes = appointment.remindMinutesBefore
+            .split(",")
+            .mapNotNull { it.trim().toIntOrNull() }
+            .filter { it >= 0 }
+
+        for (minutes in reminderMinutes) {
+            val reminderInstant = appointment.startAt - minutes * 60_000L
+            val zdt = java.time.Instant.ofEpochMilli(reminderInstant).atZone(zoneId)
+            val onceDate = zdt.toLocalDate().toString()
+            val minuteOfDay = zdt.hour * 60 + zdt.minute
+
+            val timeLabel = when {
+                minutes == 0 -> "now"
+                minutes < 60 -> "$minutes minutes"
+                minutes % 60 == 0 -> "${minutes / 60} hour${if (minutes / 60 > 1) "s" else ""}"
+                else -> "${minutes / 60}h ${minutes % 60}m"
+            }
+            val doseDesc = "in $timeLabel" + if (!placeDesc.isNullOrBlank()) ", at $placeDesc" else ""
+
+            newSchedules.add(
+                ScheduleEntity(
+                    id = UUID.randomUUID().toString(),
+                    itemId = hiddenItem.id,
+                    anchorType = ScheduleAnchorType.FIXED,
+                    minuteOfDay = minuteOfDay,
+                    recurrence = RecurrenceType.ONCE,
+                    onceDate = onceDate,
+                    anchorDate = onceDate,
+                    doseAmountOverride = doseDesc,
+                    createdAt = now,
+                    updatedAt = now
+                )
+            )
+        }
+
+        // 2. Prep reminders
+        for (prep in preps) {
+            val prepInstant = appointment.startAt - prep.minutesBefore * 60_000L
+            val zdt = java.time.Instant.ofEpochMilli(prepInstant).atZone(zoneId)
+            val onceDate = zdt.toLocalDate().toString()
+            val minuteOfDay = zdt.hour * 60 + zdt.minute
+
+            newSchedules.add(
+                ScheduleEntity(
+                    id = UUID.randomUUID().toString(),
+                    itemId = hiddenItem.id,
+                    anchorType = ScheduleAnchorType.FIXED,
+                    minuteOfDay = minuteOfDay,
+                    recurrence = RecurrenceType.ONCE,
+                    onceDate = onceDate,
+                    anchorDate = onceDate,
+                    doseAmountOverride = "Prep: ${prep.text}",
+                    createdAt = now,
+                    updatedAt = now
+                )
+            )
+        }
+
+        if (newSchedules.isNotEmpty()) {
+            scheduleDao.insertAll(newSchedules)
+        }
+    }
+}
+
 
 
