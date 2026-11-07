@@ -22,6 +22,8 @@ base64 -w0 release.jks > release.jks.b64
 
 On macOS use `base64 -i release.jks -o release.jks.b64`.
 
+**Local signed build (Windows, no CI):** create the key once, copy `keystore.properties.example` to `keystore.properties` (gitignored) and fill in the four lines, then run `.\gradlew.bat :app:assembleRelease`. The signed APK is `app\build\outputs\apk\release\app-<versionName>.apk`. If `keystore.properties` is missing, the build falls back to the CI secrets below, and then to the debug key.
+
 Add these as repo secrets (Settings → Secrets and variables → Actions → New repository secret):
 - `KEYSTORE_BASE64` — contents of `release.jks.b64`
 - `KEYSTORE_PASSWORD`
