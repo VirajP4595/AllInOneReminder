@@ -1,4 +1,5 @@
 import java.util.Base64
+import java.util.Properties
 
 plugins {
     alias(libs.plugins.android.application)
@@ -29,7 +30,7 @@ android {
     //  1. keystore.properties in the repo root (local builds; gitignored, see keystore.properties.example)
     //  2. KEYSTORE_BASE64 / KEYSTORE_PASSWORD / KEY_ALIAS / KEY_PASSWORD env vars (CI)
     // With neither, the release build falls back to the debug key (app-<version>-debugsigned.apk).
-    val keystoreProps = java.util.Properties().also { props ->
+    val keystoreProps = Properties().also { props ->
         val f = rootProject.file("keystore.properties")
         if (f.exists()) f.inputStream().use { props.load(it) }
     }
