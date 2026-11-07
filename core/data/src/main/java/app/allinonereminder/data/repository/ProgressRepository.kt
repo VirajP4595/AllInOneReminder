@@ -91,6 +91,9 @@ class ProgressRepository(
             val occ = entity.toDomain()
             if (profileId != null && occ.profileId != profileId) continue
             val item = allItems[occ.itemId]?.toDomain() ?: continue
+            // Adherence counts only resolved doses. Future/unresolved rows are not "due yet" and
+            // SUPERSEDED rows are leftovers from edited schedules; visit reminders are not doses.
+            if (!isResolved(occ.status) || item.type == app.allinonereminder.model.ItemType.APPOINTMENT) continue
             val localDate = Instant.ofEpochMilli(occ.dueAt).atZone(zoneId).toLocalDate()
             occurrencesByDate.getOrPut(localDate) { mutableListOf() }.add(occ to item)
         }
@@ -144,11 +147,17 @@ class ProgressRepository(
         val allItems = itemDao.getAllSync().associateBy { it.id }
 
         return occurrences.mapNotNull { occ ->
+            if (occ.status == app.allinonereminder.model.OccurrenceStatus.SUPERSEDED) return@mapNotNull null
             if (profileId != null && occ.profileId != profileId) return@mapNotNull null
             val item = allItems[occ.itemId]?.toDomain() ?: return@mapNotNull null
             occ to item
         }.sortedBy { it.first.dueAt }
     }
+
+    private fun isResolved(status: app.allinonereminder.model.OccurrenceStatus): Boolean =
+        status == app.allinonereminder.model.OccurrenceStatus.TAKEN ||
+            status == app.allinonereminder.model.OccurrenceStatus.SKIPPED ||
+            status == app.allinonereminder.model.OccurrenceStatus.MISSED
 
     fun mapToOccurrenceRecord(occ: Occurrence, item: Item): OccurrenceRecord {
         val gamifyType = when (item.type) {
