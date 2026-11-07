@@ -27,6 +27,7 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import app.allinonereminder.model.*
+import app.allinonereminder.ui.components.*
 import app.allinonereminder.ui.theme.AllInOneReminderTheme
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -102,11 +103,12 @@ fun ItemEditorScreen(
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
+            SectionCard(title = "Basics", icon = Icons.Default.Info) {
             // Profile selector
-            Text("Profile", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+            Text("Who is it for?", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
             LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 items(uiState.profiles) { prof ->
-                    FilterChip(
+                    ChoiceChip(
                         selected = uiState.selectedProfileId == prof.id,
                         onClick = { onProfileChange(prof.id) },
                         label = { Text(prof.name) },
@@ -123,10 +125,10 @@ fun ItemEditorScreen(
             }
 
             // Item Type selector
-            Text("Category", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+            Text("What is it?", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
             LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 items(ItemType.entries) { type ->
-                    FilterChip(
+                    ChoiceChip(
                         selected = uiState.type == type,
                         onClick = { onTypeChange(type) },
                         label = { Text(type.name.lowercase().replace('_', ' ').replaceFirstChar { it.uppercase() }) },
@@ -150,7 +152,7 @@ fun ItemEditorScreen(
             }
 
             // Name
-            OutlinedTextField(
+            AppTextField(
                 value = uiState.name,
                 onValueChange = onNameChange,
                 label = { Text("Name") },
@@ -158,35 +160,37 @@ fun ItemEditorScreen(
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth()
             )
+            }
 
+            SectionCard(title = "Dose & details", icon = Icons.Default.Medication) {
             // Dosage & Form
             if (uiState.type in listOf(ItemType.MEDICINE, ItemType.INJECTION, ItemType.WATER_DRINK, ItemType.FOOD, ItemType.SUPPLEMENT)) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
-                    OutlinedTextField(
+                    AppTextField(
                         value = uiState.dosageAmount,
                         onValueChange = onDosageAmountChange,
                         label = { Text("Amount") },
                         modifier = Modifier.weight(1f),
                         singleLine = true
                     )
-                    OutlinedTextField(
+                    OptionDropdownField(
                         value = uiState.dosageUnit,
                         onValueChange = onDosageUnitChange,
-                        label = { Text("Unit") },
-                        placeholder = { Text("mg, ml, glasses") },
-                        modifier = Modifier.weight(1f),
-                        singleLine = true
+                        options = DoseOptions.units(uiState.type),
+                        label = "Unit",
+                        modifier = Modifier.weight(1.4f)
                     )
-                    OutlinedTextField(
+                }
+                if (DoseOptions.forms(uiState.type).isNotEmpty()) {
+                    OptionDropdownField(
                         value = uiState.form,
                         onValueChange = onFormChange,
-                        label = { Text("Form") },
-                        placeholder = { Text("tablet, syrup") },
-                        modifier = Modifier.weight(1f),
-                        singleLine = true
+                        options = DoseOptions.forms(uiState.type),
+                        label = "Form",
+                        modifier = Modifier.fillMaxWidth()
                     )
                 }
             }
@@ -198,25 +202,20 @@ fun ItemEditorScreen(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {
-                    Text("Target Exercise Duration", style = MaterialTheme.typography.bodyLarge)
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        IconButton(
-                            onClick = { if (uiState.exerciseMinutes > 5) onExerciseMinutesChange(uiState.exerciseMinutes - 5) }
-                        ) {
-                            Icon(Icons.Default.RemoveCircleOutline, contentDescription = "Decrease")
-                        }
-                        Text("${uiState.exerciseMinutes} min", fontWeight = FontWeight.Bold, fontSize = 16.sp)
-                        IconButton(
-                            onClick = { onExerciseMinutesChange(uiState.exerciseMinutes + 5) }
-                        ) {
-                            Icon(Icons.Default.AddCircleOutline, contentDescription = "Increase")
-                        }
-                    }
+                    Text("Target duration", style = MaterialTheme.typography.bodyLarge)
+                    StepperPill(
+                        valueText = "${uiState.exerciseMinutes} min",
+                        onMinus = { if (uiState.exerciseMinutes > 5) onExerciseMinutesChange(uiState.exerciseMinutes - 5) },
+                        onPlus = { onExerciseMinutesChange(uiState.exerciseMinutes + 5) },
+                        minusDescription = "Decrease duration",
+                        plusDescription = "Increase duration",
+                        minusEnabled = uiState.exerciseMinutes > 5
+                    )
                 }
             }
 
             // Instructions
-            OutlinedTextField(
+            AppTextField(
                 value = uiState.instructions,
                 onValueChange = onInstructionsChange,
                 label = { Text("Instructions (optional)") },
@@ -224,15 +223,18 @@ fun ItemEditorScreen(
                 maxLines = 3,
                 modifier = Modifier.fillMaxWidth()
             )
+            }
 
             // Stock & Refill Tracking
-            if (uiState.type in listOf(ItemType.MEDICINE, ItemType.INJECTION, ItemType.SUPPLEMENT, ItemType.WATER_DRINK)) {
-                Text("Stock & Refill Tracking", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+            if (uiState.type in listOf(ItemType.MEDICINE, ItemType.INJECTION, ItemType.SUPPLEMENT, ItemType.WATER_DRINK)) SectionCard(
+                title = "Stock & refills",
+                icon = Icons.Default.Inventory2
+            ) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    OutlinedTextField(
+                    AppTextField(
                         value = uiState.currentStock,
                         onValueChange = onCurrentStockChange,
                         label = { Text("Current Stock") },
@@ -240,7 +242,7 @@ fun ItemEditorScreen(
                         modifier = Modifier.weight(1f),
                         singleLine = true
                     )
-                    OutlinedTextField(
+                    AppTextField(
                         value = uiState.unitsPerDose,
                         onValueChange = onUnitsPerDoseChange,
                         label = { Text("Units / Dose") },
@@ -248,7 +250,7 @@ fun ItemEditorScreen(
                         modifier = Modifier.weight(1f),
                         singleLine = true
                     )
-                    OutlinedTextField(
+                    AppTextField(
                         value = uiState.refillThreshold,
                         onValueChange = onRefillThresholdChange,
                         label = { Text("Refill Alert At") },
@@ -260,22 +262,27 @@ fun ItemEditorScreen(
             }
 
             // Criticality
-            Text("Criticality", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                FilterChip(
-                    selected = uiState.criticality == Criticality.NORMAL,
-                    onClick = { onCriticalityChange(Criticality.NORMAL) },
-                    label = { Text("Normal Priority") }
+            SectionCard(title = "How important is it?", icon = Icons.Default.NotificationsActive) {
+                SegmentedChoice(
+                    options = listOf(
+                        Criticality.NORMAL to "Normal",
+                        Criticality.CRITICAL to "Must not miss"
+                    ),
+                    selected = uiState.criticality,
+                    onSelect = onCriticalityChange
                 )
-                FilterChip(
-                    selected = uiState.criticality == Criticality.CRITICAL,
-                    onClick = { onCriticalityChange(Criticality.CRITICAL) },
-                    label = { Text("Critical (Must Not Miss)") }
+                Text(
+                    text = if (uiState.criticality == Criticality.CRITICAL) {
+                        "Rings loudly and keeps reminding until you act."
+                    } else {
+                        "A normal reminder with the usual repeat."
+                    },
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
 
-            // Photos section
-            Text("Photos", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+            SectionCard(title = "Photos", icon = Icons.Default.PhotoCamera) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically,
@@ -300,44 +307,40 @@ fun ItemEditorScreen(
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
-
-            HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
+            }
 
             // Schedules Builder
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
+            SectionCard(
+                title = "Schedule",
+                icon = Icons.Default.Schedule,
+                action = {
+                    TextButton(onClick = onAddSchedule) {
+                        Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text("Add")
+                    }
+                }
             ) {
-                Text("Schedules", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                TextButton(onClick = onAddSchedule) {
-                    Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(18.dp))
-                    Spacer(modifier = Modifier.width(4.dp))
-                    Text("Add Schedule")
+                uiState.schedules.forEachIndexed { index, draft ->
+                    ScheduleDraftCard(
+                        index = index + 1,
+                        draft = draft,
+                        onUpdate = { update -> onUpdateSchedule(draft.id, update) },
+                        onRemove = { onRemoveSchedule(draft.id) }
+                    )
+                }
+
+                if (uiState.schedules.any { it.recurrence == RecurrenceType.PRN }) {
+                    AppTextField(
+                        value = uiState.maxPerDay?.toString() ?: "",
+                        onValueChange = onMaxPerDayChange,
+                        label = { Text("Max doses per day (as needed)") },
+                        placeholder = { Text("e.g. 3") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
                 }
             }
-
-            uiState.schedules.forEachIndexed { index, draft ->
-                ScheduleDraftCard(
-                    index = index + 1,
-                    draft = draft,
-                    onUpdate = { update -> onUpdateSchedule(draft.id, update) },
-                    onRemove = { onRemoveSchedule(draft.id) }
-                )
-            }
-
-            if (uiState.schedules.any { it.recurrence == RecurrenceType.PRN }) {
-                OutlinedTextField(
-                    value = uiState.maxPerDay?.toString() ?: "",
-                    onValueChange = onMaxPerDayChange,
-                    label = { Text("Max doses per day (as needed)") },
-                    placeholder = { Text("e.g. 3") },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth()
-                )
-            }
-
-            HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
 
             // Advanced Settings Toggle
             Row(
@@ -363,18 +366,14 @@ fun ItemEditorScreen(
                 Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     // Time Policy
                     Text("Timezone Policy", fontWeight = FontWeight.SemiBold)
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        FilterChip(
-                            selected = uiState.timePolicy == TimePolicy.LOCAL_WALL_CLOCK,
-                            onClick = { onTimePolicyChange(TimePolicy.LOCAL_WALL_CLOCK) },
-                            label = { Text("Local Wall Clock") }
-                        )
-                        FilterChip(
-                            selected = uiState.timePolicy == TimePolicy.HOME_ZONE,
-                            onClick = { onTimePolicyChange(TimePolicy.HOME_ZONE) },
-                            label = { Text("Lock to Home Zone") }
-                        )
-                    }
+                    SegmentedChoice(
+                        options = listOf(
+                            TimePolicy.LOCAL_WALL_CLOCK to "Local time",
+                            TimePolicy.HOME_ZONE to "Home time zone"
+                        ),
+                        selected = uiState.timePolicy,
+                        onSelect = onTimePolicyChange
+                    )
 
                     // Grace Minutes
                     Row(
@@ -418,7 +417,8 @@ private fun ScheduleDraftCard(
 ) {
     Card(
         modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
+        shape = MaterialTheme.shapes.small
     ) {
         Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Row(
@@ -434,12 +434,12 @@ private fun ScheduleDraftCard(
 
             // Anchor Type selector
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                FilterChip(
+                ChoiceChip(
                     selected = draft.anchorType == ScheduleAnchorType.FIXED,
                     onClick = { onUpdate { it.copy(anchorType = ScheduleAnchorType.FIXED) } },
                     label = { Text("Fixed Time") }
                 )
-                FilterChip(
+                ChoiceChip(
                     selected = draft.anchorType == ScheduleAnchorType.MEAL,
                     onClick = { onUpdate { it.copy(anchorType = ScheduleAnchorType.MEAL) } },
                     label = { Text("Meal Relative") }
@@ -483,7 +483,7 @@ private fun ScheduleDraftCard(
                 Text("Meal & Timing", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
                 LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     items(MealType.entries) { m ->
-                        FilterChip(
+                        ChoiceChip(
                             selected = draft.meal == m,
                             onClick = { onUpdate { it.copy(meal = m) } },
                             label = { Text(m.name.lowercase().replaceFirstChar { it.uppercase() }) }
@@ -492,7 +492,7 @@ private fun ScheduleDraftCard(
                 }
                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     MealRelation.entries.forEach { r ->
-                        FilterChip(
+                        ChoiceChip(
                             selected = draft.relation == r,
                             onClick = { onUpdate { it.copy(relation = r) } },
                             label = { Text(r.name.lowercase().replaceFirstChar { it.uppercase() }) }
@@ -505,14 +505,14 @@ private fun ScheduleDraftCard(
             Text("Recurrence", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
             LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 item {
-                    FilterChip(
+                    ChoiceChip(
                         selected = draft.recurrence == RecurrenceType.DAILY,
                         onClick = { onUpdate { it.copy(recurrence = RecurrenceType.DAILY) } },
                         label = { Text("Daily") }
                     )
                 }
                 item {
-                    FilterChip(
+                    ChoiceChip(
                         selected = draft.recurrence == RecurrenceType.EVERY_N_WEEKS && (draft.intervalN ?: 1) == 1,
                         onClick = {
                             onUpdate {
@@ -527,7 +527,7 @@ private fun ScheduleDraftCard(
                     )
                 }
                 item {
-                    FilterChip(
+                    ChoiceChip(
                         selected = draft.recurrence == RecurrenceType.EVERY_N_DAYS,
                         onClick = {
                             onUpdate {
@@ -541,7 +541,7 @@ private fun ScheduleDraftCard(
                     )
                 }
                 item {
-                    FilterChip(
+                    ChoiceChip(
                         selected = draft.recurrence == RecurrenceType.EVERY_N_WEEKS && (draft.intervalN ?: 1) != 1,
                         onClick = {
                             onUpdate {
@@ -556,28 +556,28 @@ private fun ScheduleDraftCard(
                     )
                 }
                 item {
-                    FilterChip(
+                    ChoiceChip(
                         selected = draft.recurrence == RecurrenceType.MONTHLY,
                         onClick = { onUpdate { it.copy(recurrence = RecurrenceType.MONTHLY) } },
                         label = { Text("Monthly") }
                     )
                 }
                 item {
-                    FilterChip(
+                    ChoiceChip(
                         selected = draft.recurrence == RecurrenceType.INTERVAL,
                         onClick = { onUpdate { it.copy(recurrence = RecurrenceType.INTERVAL) } },
                         label = { Text("Every N hours") }
                     )
                 }
                 item {
-                    FilterChip(
+                    ChoiceChip(
                         selected = draft.recurrence == RecurrenceType.PRN,
                         onClick = { onUpdate { it.copy(recurrence = RecurrenceType.PRN) } },
                         label = { Text("As needed") }
                     )
                 }
                 item {
-                    FilterChip(
+                    ChoiceChip(
                         selected = draft.recurrence == RecurrenceType.ONCE,
                         onClick = { onUpdate { it.copy(recurrence = RecurrenceType.ONCE) } },
                         label = { Text("Once") }
@@ -617,12 +617,12 @@ private fun ScheduleDraftCard(
                 }
                 RecurrenceType.MONTHLY -> {
                     Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                        FilterChip(
+                        ChoiceChip(
                             selected = !draft.monthlyByWeekday,
                             onClick = { onUpdate { it.copy(monthlyByWeekday = false) } },
                             label = { Text("On a day") }
                         )
-                        FilterChip(
+                        ChoiceChip(
                             selected = draft.monthlyByWeekday,
                             onClick = {
                                 onUpdate {
@@ -638,7 +638,7 @@ private fun ScheduleDraftCard(
                     if (draft.monthlyByWeekday) {
                         Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                             listOf(1 to "1st", 2 to "2nd", 3 to "3rd", 4 to "4th", 5 to "Last").forEach { (week, label) ->
-                                FilterChip(
+                                ChoiceChip(
                                     selected = draft.nthWeek == week,
                                     onClick = { onUpdate { it.copy(nthWeek = week) } },
                                     label = { Text(label) }
@@ -707,7 +707,7 @@ private fun ScheduleDraftCard(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                OutlinedTextField(
+                AppTextField(
                     value = draft.validFrom ?: "",
                     onValueChange = { value -> onUpdate { it.copy(validFrom = value.ifBlank { null }) } },
                     label = { Text("From") },
@@ -715,7 +715,7 @@ private fun ScheduleDraftCard(
                     singleLine = true,
                     modifier = Modifier.weight(1f)
                 )
-                OutlinedTextField(
+                AppTextField(
                     value = draft.validUntil ?: "",
                     onValueChange = { value -> onUpdate { it.copy(validUntil = value.ifBlank { null }) } },
                     label = { Text("Until") },
@@ -724,7 +724,7 @@ private fun ScheduleDraftCard(
                     modifier = Modifier.weight(1f)
                 )
             }
-            OutlinedTextField(
+            AppTextField(
                 value = draft.doseAmountOverride ?: "",
                 onValueChange = { value -> onUpdate { it.copy(doseAmountOverride = value.ifBlank { null }) } },
                 label = { Text("Dose for this schedule (optional)") },
@@ -751,26 +751,15 @@ private fun NumberStepper(
         verticalAlignment = Alignment.CenterVertically
     ) {
         Text(label, style = MaterialTheme.typography.bodyMedium)
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            IconButton(
-                onClick = { onChange((value - 1).coerceAtLeast(min)) },
-                enabled = value > min
-            ) {
-                Icon(Icons.Default.Remove, contentDescription = "Decrease $label")
-            }
-            Text(
-                text = if (suffix.isEmpty()) "$value" else "$value $suffix",
-                fontWeight = FontWeight.Bold,
-                fontSize = 18.sp,
-                modifier = Modifier.padding(horizontal = 8.dp)
-            )
-            IconButton(
-                onClick = { onChange((value + 1).coerceAtMost(max)) },
-                enabled = value < max
-            ) {
-                Icon(Icons.Default.Add, contentDescription = "Increase $label")
-            }
-        }
+        StepperPill(
+            valueText = if (suffix.isEmpty()) "$value" else "$value $suffix",
+            onMinus = { onChange((value - 1).coerceAtLeast(min)) },
+            onPlus = { onChange((value + 1).coerceAtMost(max)) },
+            minusDescription = "Decrease $label",
+            plusDescription = "Increase $label",
+            minusEnabled = value > min,
+            plusEnabled = value < max
+        )
     }
 }
 
@@ -780,30 +769,17 @@ private fun MinuteOfDayStepper(
     value: Int,
     onChange: (Int) -> Unit
 ) {
-    val hour = (value / 60) % 24
-    val minute = value % 60
-    val ampm = if (hour >= 12) "PM" else "AM"
-    val hour12 = if (hour % 12 == 0) 12 else hour % 12
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically
     ) {
         Text(label, style = MaterialTheme.typography.bodyMedium)
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            IconButton(onClick = { onChange((value - 30 + 1440) % 1440) }) {
-                Icon(Icons.Default.Remove, contentDescription = "Decrease $label")
-            }
-            Text(
-                text = String.format("%d:%02d %s", hour12, minute, ampm),
-                fontWeight = FontWeight.Bold,
-                fontSize = 18.sp,
-                modifier = Modifier.padding(horizontal = 8.dp)
-            )
-            IconButton(onClick = { onChange((value + 30) % 1440) }) {
-                Icon(Icons.Default.Add, contentDescription = "Increase $label")
-            }
-        }
+        TimeChip(
+            minuteOfDay = value,
+            onChange = onChange,
+            contentDescription = "Change $label"
+        )
     }
 }
 

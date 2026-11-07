@@ -52,7 +52,7 @@ data class ItemEditorUiState(
     val name: String = "",
     val dosageAmount: String = "1",
     val dosageUnit: String = "tablet",
-    val form: String = "pill",
+    val form: String = "Tablet",
     val instructions: String = "",
     val criticality: Criticality = Criticality.NORMAL,
     val exerciseMinutes: Int = 30,
@@ -170,7 +170,23 @@ class ItemEditorViewModel @Inject constructor(
     }
 
     fun updateName(name: String) = _uiState.update { it.copy(name = name) }
-    fun updateType(type: ItemType) = _uiState.update { it.copy(type = type) }
+    fun updateType(type: ItemType) = _uiState.update { s ->
+        // Swap the unit/form to the new type's defaults only if they were still one of the old
+        // type's stock choices; anything the user typed themselves is kept.
+        val oldUnits = DoseOptions.units(s.type)
+        val oldForms = DoseOptions.forms(s.type)
+        val newUnits = DoseOptions.units(type)
+        val newForms = DoseOptions.forms(type)
+        s.copy(
+            type = type,
+            dosageUnit = if (s.dosageUnit.isBlank() || (s.dosageUnit in oldUnits && s.dosageUnit !in newUnits)) {
+                DoseOptions.defaultUnit(type)
+            } else s.dosageUnit,
+            form = if (s.form.isBlank() || s.form == "pill" || (s.form in oldForms && s.form !in newForms)) {
+                DoseOptions.defaultForm(type)
+            } else s.form
+        )
+    }
     fun updateProfile(profileId: String) = _uiState.update { it.copy(selectedProfileId = profileId) }
     fun updateDosageAmount(amount: String) = _uiState.update { it.copy(dosageAmount = amount) }
     fun updateDosageUnit(unit: String) = _uiState.update { it.copy(dosageUnit = unit) }
