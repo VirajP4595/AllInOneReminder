@@ -114,6 +114,7 @@ dependencies {
     implementation(project(":core:model"))
     implementation(project(":core:schedule"))
     implementation(project(":core:data"))
+    implementation(project(":core:gamify"))
 
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)
@@ -133,6 +134,8 @@ dependencies {
     implementation(libs.androidx.compose.ui.tooling.preview)
     implementation(libs.androidx.compose.material3)
     implementation(libs.androidx.compose.material.icons)
+    implementation(libs.androidx.glance)
+    implementation(libs.androidx.glance.material3)
     implementation(libs.androidx.navigation.compose)
 
     implementation(libs.hilt.android)

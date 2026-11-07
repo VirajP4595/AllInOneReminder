@@ -32,8 +32,10 @@ import java.time.format.DateTimeFormatter
 fun SettingsScreen(
     uiState: SettingsUiState,
     onNavigateToPermissions: () -> Unit = {},
+    onNavigateToProfiles: () -> Unit = {},
     onUpdateSnooze: (Int) -> Unit = {},
     onUpdateRingDuration: (Int) -> Unit = {},
+    onUpdateSpeakReminders: (Boolean) -> Unit = {},
     onSeedData: () -> Unit = {},
     onCreateBackup: (Uri, String) -> Unit = { _, _ -> },
     onInspectRestore: (Uri, String) -> Unit = { _, _ -> },
@@ -131,6 +133,50 @@ fun SettingsScreen(
                 }
             }
 
+            // Profiles & Family Members Card
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable(onClick = onNavigateToProfiles),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.tertiaryContainer)
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(16.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            imageVector = Icons.Default.People,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.onTertiaryContainer,
+                            modifier = Modifier.size(32.dp)
+                        )
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Column {
+                            Text(
+                                text = "Profiles & Family Members",
+                                fontWeight = FontWeight.Bold,
+                                style = MaterialTheme.typography.titleMedium,
+                                color = MaterialTheme.colorScheme.onTertiaryContainer
+                            )
+                            Text(
+                                text = "Add and manage patient profiles and colors",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onTertiaryContainer
+                            )
+                        }
+                    }
+                    Icon(
+                        imageVector = Icons.Default.ChevronRight,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.onTertiaryContainer
+                    )
+                }
+            }
+
             // Permission Diagnostics Card
             Card(
                 modifier = Modifier
@@ -218,6 +264,29 @@ fun SettingsScreen(
                                 )
                             }
                         }
+                    }
+
+                    HorizontalDivider()
+
+                    // Spoken Alarms Toggle (Opt-in)
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text("Speak reminders aloud", fontWeight = FontWeight.SemiBold)
+                            Text(
+                                text = "Speaks reminder aloud when alarm starts (e.g. 'Dad, Metformin 500, one tablet, after breakfast'). Note: medicine names will be spoken aloud.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Switch(
+                            checked = uiState.speakRemindersEnabled,
+                            onCheckedChange = onUpdateSpeakReminders
+                        )
                     }
                 }
             }

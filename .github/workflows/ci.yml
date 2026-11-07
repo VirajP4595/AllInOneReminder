@@ -33,7 +33,7 @@ jobs:
         run: chmod +x gradlew
 
       - name: Run Lint, Test and Assemble
-        run: ./gradlew lint test :core:schedule:jacocoTestCoverageVerification assembleDebug assembleRelease --stacktrace
+        run: ./gradlew lint test :core:schedule:jacocoTestCoverageVerification :core:gamify:jacocoTestCoverageVerification assembleDebug assembleRelease --stacktrace
         env:
           KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
           KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}

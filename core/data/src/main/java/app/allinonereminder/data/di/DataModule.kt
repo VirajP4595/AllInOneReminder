@@ -23,6 +23,7 @@ import app.allinonereminder.data.repository.MealAnchorRepository
 import app.allinonereminder.data.repository.MealSessionRepository
 import app.allinonereminder.data.repository.OccurrenceRepository
 import app.allinonereminder.data.repository.ProfileRepository
+import app.allinonereminder.data.repository.ProgressRepository
 import app.allinonereminder.data.repository.ScheduleRepository
 import app.allinonereminder.data.repository.SettingsRepository
 import app.allinonereminder.data.repository.StockEventRepository
@@ -208,6 +209,16 @@ object DataModule {
         scheduleDao = scheduleDao,
         database = database,
         changeLogWriter = changeLogWriter
+    )
+
+    @Provides
+    @Singleton
+    fun provideProgressRepository(
+        occurrenceDao: OccurrenceDao,
+        itemDao: ItemDao
+    ): ProgressRepository = ProgressRepository(
+        occurrenceDao = occurrenceDao,
+        itemDao = itemDao
     )
 }
 

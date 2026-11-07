@@ -15,6 +15,7 @@ import app.allinonereminder.data.repository.SettingsRepository
 import app.allinonereminder.model.Occurrence
 import app.allinonereminder.model.OccurrenceStatus
 import app.allinonereminder.schedule.SchedulingEngine
+import app.allinonereminder.widget.TodayWidgetUpdater
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -211,7 +212,7 @@ class AlarmCoordinator @Inject constructor(
 
         val earliestOccurrence = updatedUnresolved.minByOrNull { it.remindAt }
 
-        return if (earliestOccurrence != null) {
+        val result = if (earliestOccurrence != null) {
             // Group occurrences due at the same minute based on remindAt
             val remindMinute = earliestOccurrence.remindAt / 60_000L
             val simultaneousOccurrences = updatedUnresolved.filter {
@@ -286,6 +287,10 @@ class AlarmCoordinator @Inject constructor(
                 occurrenceCount = 0
             )
         }
+
+        TodayWidgetUpdater.update(context)
+
+        return result
     }
 }
 

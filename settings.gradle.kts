@@ -24,4 +24,5 @@ include(":app")
 include(":core:model")
 include(":core:schedule")
 include(":core:data")
+include(":core:gamify")
 

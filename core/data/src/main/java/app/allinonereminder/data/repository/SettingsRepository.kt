@@ -22,6 +22,7 @@ data class UserSettings(
     val soundNormal: String = "reminder",
     val soundGentle: String = "gentle",
     val vibrationEnabled: Boolean = true,
+    val speakRemindersEnabled: Boolean = false,
     val onboardingCompleted: Boolean = false,
     val deviceId: String
 )
@@ -36,6 +37,7 @@ class SettingsRepository(
         val KEY_SOUND_NORMAL = stringPreferencesKey("sound_normal")
         val KEY_SOUND_GENTLE = stringPreferencesKey("sound_gentle")
         val KEY_VIBRATION = booleanPreferencesKey("vibration_enabled")
+        val KEY_SPEAK_REMINDERS = booleanPreferencesKey("speak_reminders_enabled")
         val KEY_ONBOARDING_DONE = booleanPreferencesKey("onboarding_completed")
         val KEY_DEVICE_ID = stringPreferencesKey("device_id")
         val KEY_LAST_RESCHEDULE_ERROR = stringPreferencesKey("last_reschedule_error")
@@ -63,6 +65,7 @@ class SettingsRepository(
             soundNormal = prefs[KEY_SOUND_NORMAL] ?: "reminder",
             soundGentle = prefs[KEY_SOUND_GENTLE] ?: "gentle",
             vibrationEnabled = prefs[KEY_VIBRATION] ?: true,
+            speakRemindersEnabled = prefs[KEY_SPEAK_REMINDERS] ?: false,
             onboardingCompleted = prefs[KEY_ONBOARDING_DONE] ?: false,
             deviceId = prefs[KEY_DEVICE_ID] ?: ""
         )
@@ -86,12 +89,20 @@ class SettingsRepository(
     suspend fun updateSettings(
         defaultSnoozeMinutes: Int? = null,
         ringDurationSeconds: Int? = null,
-        vibrationEnabled: Boolean? = null
+        vibrationEnabled: Boolean? = null,
+        speakRemindersEnabled: Boolean? = null
     ) {
         dataStore.edit { prefs ->
             defaultSnoozeMinutes?.let { prefs[KEY_DEFAULT_SNOOZE] = it }
             ringDurationSeconds?.let { prefs[KEY_RING_DURATION] = it }
             vibrationEnabled?.let { prefs[KEY_VIBRATION] = it }
+            speakRemindersEnabled?.let { prefs[KEY_SPEAK_REMINDERS] = it }
+        }
+    }
+
+    suspend fun setSpeakRemindersEnabled(enabled: Boolean) {
+        dataStore.edit { prefs ->
+            prefs[KEY_SPEAK_REMINDERS] = enabled
         }
     }
 
