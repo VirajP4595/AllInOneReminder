@@ -56,14 +56,21 @@ import app.allinonereminder.alarm.AlarmReceiver
 @Composable
 fun PermissionHealthCheckScreen(
     onSeedSampleData: (() -> Unit)? = null,
-    onTestAlarmSent: ((String) -> Unit)? = null
+    onSendTestAlarm: (() -> Unit)? = null
 ) {
     val context = LocalContext.current
     var permissions by remember { mutableStateOf(PermissionChecker.checkAll(context)) }
     val (oemTitle, oemText) = remember { PermissionChecker.getOemAutostartInstructions() }
 
-    LaunchedEffect(Unit) {
-        permissions = PermissionChecker.checkAll(context)
+    val lifecycleOwner = androidx.compose.ui.platform.LocalLifecycleOwner.current
+    androidx.compose.runtime.DisposableEffect(lifecycleOwner) {
+        val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
+            if (event == androidx.lifecycle.Lifecycle.Event.ON_RESUME) {
+                permissions = PermissionChecker.checkAll(context)
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
 
     Scaffold { padding ->
@@ -166,32 +173,7 @@ fun PermissionHealthCheckScreen(
             item {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Button(
-                        onClick = {
-                            val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
-                            val triggerTime = System.currentTimeMillis() + 60_000L // 1 minute
-                            val alarmIntent = Intent(context, AlarmReceiver::class.java).apply {
-                                action = AlarmCoordinator.ACTION_ALARM_FIRE
-                                putExtra(AlarmCoordinator.EXTRA_OCCURRENCE_IDS, arrayOf("test-alarm-id"))
-                            }
-                            val pendingIntent = PendingIntent.getBroadcast(
-                                context,
-                                9999,
-                                alarmIntent,
-                                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-                            )
-                            val showIntent = Intent(context, MainActivity::class.java)
-                            val showPendingIntent = PendingIntent.getActivity(
-                                context,
-                                9998,
-                                showIntent,
-                                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-                            )
-                            alarmManager.setAlarmClock(
-                                AlarmManager.AlarmClockInfo(triggerTime, showPendingIntent),
-                                pendingIntent
-                            )
-                            onTestAlarmSent?.invoke("Test alarm scheduled in 1 minute. Lock your screen to test!")
-                        },
+                        onClick = { onSendTestAlarm?.invoke() },
                         modifier = Modifier.fillMaxWidth()
                     ) {
                         Text("Send Test Alarm in 1 Minute")

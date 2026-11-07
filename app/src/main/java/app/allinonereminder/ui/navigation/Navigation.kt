@@ -79,7 +79,8 @@ fun MainAppNavigation(
     profileRepository: ProfileRepository,
     mealAnchorRepository: MealAnchorRepository,
     alarmCoordinator: AlarmCoordinator,
-    sampleDataSeeder: SampleDataSeeder
+    sampleDataSeeder: SampleDataSeeder,
+    testAlarmScheduler: app.allinonereminder.alarm.TestAlarmScheduler
 ) {
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
@@ -126,6 +127,17 @@ fun MainAppNavigation(
             // 1. Onboarding
             composable(Screen.Onboarding.route) {
                 var permList by remember { mutableStateOf(PermissionChecker.checkAll(context)) }
+                var testAlarmRequested by remember { mutableStateOf(false) }
+                val lifecycleOwner = androidx.compose.ui.platform.LocalLifecycleOwner.current
+                androidx.compose.runtime.DisposableEffect(lifecycleOwner) {
+                    val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
+                        if (event == androidx.lifecycle.Lifecycle.Event.ON_RESUME) {
+                            permList = PermissionChecker.checkAll(context)
+                        }
+                    }
+                    lifecycleOwner.lifecycle.addObserver(observer)
+                    onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+                }
                 OnboardingScreen(
                     permissions = permList,
                     onRequestPermission = { item ->
@@ -133,8 +145,12 @@ fun MainAppNavigation(
                         permList = PermissionChecker.checkAll(context)
                     },
                     onSendTestAlarm = {
-                        val msg = PermissionChecker.scheduleTestAlarm(context, 1)
-                        Toast.makeText(context, msg, Toast.LENGTH_LONG).show()
+                        testAlarmRequested = true
+                        Toast.makeText(
+                            context,
+                            "The test alarm will ring 1 minute after you finish setup.",
+                            Toast.LENGTH_LONG
+                        ).show()
                     },
                     onCompleteOnboarding = { name, colorArgb, bHour, lHour, dHour ->
                         coroutineScope.launch {
@@ -168,6 +184,10 @@ fun MainAppNavigation(
                             )
 
                             settingsRepository.setOnboardingCompleted(true)
+                            if (testAlarmRequested) {
+                                val msg = testAlarmScheduler.schedule(prof.id)
+                                Toast.makeText(context, msg, Toast.LENGTH_LONG).show()
+                            }
                             navController.navigate(Screen.Today.route) {
                                 popUpTo(Screen.Onboarding.route) { inclusive = true }
                             }
@@ -423,8 +443,11 @@ fun MainAppNavigation(
                             Toast.makeText(context, msg, Toast.LENGTH_LONG).show()
                         }
                     },
-                    onTestAlarmSent = { msg ->
-                        Toast.makeText(context, msg, Toast.LENGTH_LONG).show()
+                    onSendTestAlarm = {
+                        coroutineScope.launch {
+                            val msg = testAlarmScheduler.schedule()
+                            Toast.makeText(context, msg, Toast.LENGTH_LONG).show()
+                        }
                     }
                 )
             }

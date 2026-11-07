@@ -57,6 +57,9 @@ class MainActivity : ComponentActivity() {
     @Inject
     lateinit var sampleDataSeeder: SampleDataSeeder
 
+    @Inject
+    lateinit var testAlarmScheduler: app.allinonereminder.alarm.TestAlarmScheduler
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
@@ -86,7 +89,8 @@ class MainActivity : ComponentActivity() {
                             profileRepository = profileRepository,
                             mealAnchorRepository = mealAnchorRepository,
                             alarmCoordinator = alarmCoordinator,
-                            sampleDataSeeder = sampleDataSeeder
+                            sampleDataSeeder = sampleDataSeeder,
+                            testAlarmScheduler = testAlarmScheduler
                         )
                     }
                 }
