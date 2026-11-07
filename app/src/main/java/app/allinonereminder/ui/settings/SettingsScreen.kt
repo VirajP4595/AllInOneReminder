@@ -1,6 +1,15 @@
 package app.allinonereminder.ui.settings
 
+import android.content.ActivityNotFoundException
+import android.content.Intent
 import android.net.Uri
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalLifecycleOwner
+import androidx.health.connect.client.PermissionController
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import app.allinonereminder.health.HealthAvailability
+import app.allinonereminder.health.HealthConnectActivitySource
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.clickable
@@ -36,6 +45,9 @@ fun SettingsScreen(
     onUpdateSnooze: (Int) -> Unit = {},
     onUpdateRingDuration: (Int) -> Unit = {},
     onUpdateSpeakReminders: (Boolean) -> Unit = {},
+    onRefreshHealthStatus: () -> Unit = {},
+    onSetHealthVerification: (Boolean) -> Unit = {},
+    onHealthPermissionResult: (Set<String>) -> Unit = {},
     onSeedData: () -> Unit = {},
     onCreateBackup: (Uri, String) -> Unit = { _, _ -> },
     onInspectRestore: (Uri, String) -> Unit = { _, _ -> },
@@ -47,6 +59,19 @@ fun SettingsScreen(
     var showRestorePassphraseDialog by remember { mutableStateOf(false) }
     var pendingRestoreUri by remember { mutableStateOf<Uri?>(null) }
     var pendingPassphrase by remember { mutableStateOf("") }
+
+    val context = LocalContext.current
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) onRefreshHealthStatus()
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+    val healthPermissionLauncher = rememberLauncherForActivityResult(
+        contract = PermissionController.createRequestPermissionResultContract()
+    ) { granted -> onHealthPermissionResult(granted) }
 
     val createBackupLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.CreateDocument("application/octet-stream")
@@ -286,6 +311,78 @@ fun SettingsScreen(
                         Switch(
                             checked = uiState.speakRemindersEnabled,
                             onCheckedChange = onUpdateSpeakReminders
+                        )
+                    }
+
+                    HorizontalDivider()
+
+                    // Health Connect verification (opt-in, read-only, on-device)
+                    val healthReady = uiState.healthAvailability == HealthAvailability.AVAILABLE
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text("Verify exercise with Health Connect", fontWeight = FontWeight.SemiBold)
+                            Text(
+                                text = when (uiState.healthAvailability) {
+                                    HealthAvailability.AVAILABLE ->
+                                        "If your phone already recorded a walk or workout of the target length, the exercise reminder is ticked off instead of ringing. Read-only; nothing leaves this phone."
+                                    HealthAvailability.NOT_INSTALLED ->
+                                        "Health Connect is not installed on this phone. Install it to use this. Reminders work as normal without it."
+                                    HealthAvailability.UPDATE_REQUIRED ->
+                                        "Health Connect needs an update before it can be used. Reminders work as normal without it."
+                                    HealthAvailability.UNSUPPORTED ->
+                                        "Health Connect is not available on this phone. Reminders work as normal without it."
+                                },
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            if (healthReady && uiState.healthConnectVerifyEnabled.not() && !uiState.healthPermissionGranted) {
+                                Text(
+                                    text = "Turning this on asks for permission to read exercise and steps.",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                            if (uiState.healthAvailability == HealthAvailability.NOT_INSTALLED ||
+                                uiState.healthAvailability == HealthAvailability.UPDATE_REQUIRED
+                            ) {
+                                TextButton(onClick = {
+                                    val pkg = HealthConnectActivitySource.PROVIDER_PACKAGE
+                                    try {
+                                        context.startActivity(
+                                            Intent(Intent.ACTION_VIEW, Uri.parse("market://details?id=$pkg"))
+                                                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                        )
+                                    } catch (e: ActivityNotFoundException) {
+                                        try {
+                                            context.startActivity(
+                                                Intent(Intent.ACTION_VIEW, Uri.parse("https://play.google.com/store/apps/details?id=$pkg"))
+                                                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                            )
+                                        } catch (_: ActivityNotFoundException) {
+                                        }
+                                    }
+                                }) {
+                                    Text(if (uiState.healthAvailability == HealthAvailability.NOT_INSTALLED) "Install Health Connect" else "Update Health Connect")
+                                }
+                            }
+                        }
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Switch(
+                            checked = uiState.healthConnectVerifyEnabled && healthReady,
+                            enabled = healthReady,
+                            onCheckedChange = { wantOn ->
+                                if (!wantOn) {
+                                    onSetHealthVerification(false)
+                                } else if (uiState.healthPermissionGranted) {
+                                    onSetHealthVerification(true)
+                                } else {
+                                    healthPermissionLauncher.launch(HealthConnectActivitySource.PERMISSIONS)
+                                }
+                            }
                         )
                     }
                 }

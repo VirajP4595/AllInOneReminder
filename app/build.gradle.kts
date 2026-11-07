@@ -136,6 +136,8 @@ dependencies {
     implementation(libs.androidx.compose.material.icons)
     implementation(libs.androidx.glance)
     implementation(libs.androidx.glance.material3)
+    implementation(libs.androidx.health.connect)
+    implementation(libs.androidx.work.runtime.ktx)
     implementation(libs.androidx.navigation.compose)
 
     implementation(libs.hilt.android)
