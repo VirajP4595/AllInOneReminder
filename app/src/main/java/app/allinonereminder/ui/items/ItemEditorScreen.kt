@@ -519,7 +519,7 @@ private fun ScheduleDraftCard(
                                 it.copy(
                                     recurrence = RecurrenceType.EVERY_N_WEEKS,
                                     intervalN = 1,
-                                    weekdayMask = it.weekdayMask ?: 127
+                                    weekdayMask = it.weekdayMask?.takeIf { m -> m != 0 } ?: todayWeekdayBit()
                                 )
                             }
                         },
@@ -548,7 +548,7 @@ private fun ScheduleDraftCard(
                                 it.copy(
                                     recurrence = RecurrenceType.EVERY_N_WEEKS,
                                     intervalN = if ((it.intervalN ?: 1) <= 1) 2 else it.intervalN,
-                                    weekdayMask = it.weekdayMask ?: 127
+                                    weekdayMask = it.weekdayMask?.takeIf { m -> m != 0 } ?: todayWeekdayBit()
                                 )
                             }
                         },
@@ -604,9 +604,14 @@ private fun ScheduleDraftCard(
                         onChange = { value -> onUpdate { it.copy(intervalN = value) } }
                     )
                     WeekdayChips(
-                        mask = draft.weekdayMask ?: 127,
+                        mask = draft.weekdayMask?.takeIf { it != 0 } ?: todayWeekdayBit(),
                         onToggle = { bit ->
-                            onUpdate { it.copy(weekdayMask = (it.weekdayMask ?: 127) xor bit) }
+                            onUpdate {
+                                val current = it.weekdayMask?.takeIf { m -> m != 0 } ?: todayWeekdayBit()
+                                val next = current xor bit
+                                // Keep at least one day selected.
+                                it.copy(weekdayMask = if (next == 0) current else next)
+                            }
                         }
                     )
                 }
@@ -802,21 +807,49 @@ private fun MinuteOfDayStepper(
     }
 }
 
+private fun todayWeekdayBit(): Int = 1 shl (java.time.LocalDate.now().dayOfWeek.value - 1)
+
 @Composable
 private fun WeekdayChips(
     mask: Int,
     singleSelect: Boolean = false,
     onToggle: (Int) -> Unit
 ) {
-    val days = listOf("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun")
-    LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-        items(days.size) { index ->
+    val labels = listOf("M", "T", "W", "T", "F", "S", "S")
+    val names = listOf("Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday")
+    // Seven equal cells so every day fits on any screen width (no horizontal scrolling).
+    Row(modifier = Modifier.fillMaxWidth()) {
+        labels.forEachIndexed { index, label ->
             val bit = 1 shl index
-            FilterChip(
-                selected = (mask and bit) != 0,
-                onClick = { onToggle(bit) },
-                label = { Text(days[index]) }
-            )
+            val selected = (mask and bit) != 0
+            Box(
+                modifier = Modifier
+                    .weight(1f)
+                    .height(48.dp)
+                    .clickable(
+                        onClickLabel = names[index],
+                        role = androidx.compose.ui.semantics.Role.Checkbox
+                    ) { onToggle(bit) },
+                contentAlignment = Alignment.Center
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(38.dp)
+                        .clip(CircleShape)
+                        .background(
+                            if (selected) MaterialTheme.colorScheme.primary
+                            else MaterialTheme.colorScheme.surfaceVariant
+                        ),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = label,
+                        fontWeight = FontWeight.SemiBold,
+                        color = if (selected) MaterialTheme.colorScheme.onPrimary
+                        else MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
         }
     }
     if (!singleSelect) {

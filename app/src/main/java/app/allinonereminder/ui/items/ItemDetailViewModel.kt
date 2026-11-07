@@ -56,6 +56,15 @@ class ItemDetailViewModel @Inject constructor(
 
     init {
         loadItemDetails()
+        // Reload whenever the item or its schedules change (e.g. after Edit > Save).
+        viewModelScope.launch {
+            kotlinx.coroutines.flow.combine(
+                itemRepository.getItem(itemId),
+                scheduleRepository.getActiveSchedules(itemId)
+            ) { item, schedules -> item to schedules }
+                .drop(1)
+                .collect { loadItemDetails() }
+        }
     }
 
     fun loadItemDetails() {

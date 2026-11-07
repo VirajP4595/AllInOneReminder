@@ -50,6 +50,11 @@ data class Item(
     val deletedAt: Long? = null
 )
 
+/** Items created by the "Send test alarm" button. They ring like a real reminder but stay out of lists and stats. */
+const val TEST_ALARM_ID_PREFIX = "test-alarm-"
+
+val Item.isTestAlarm: Boolean get() = id.startsWith(TEST_ALARM_ID_PREFIX)
+
 data class ItemPhoto(
     val id: String,
     val itemId: String,

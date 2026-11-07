@@ -5,6 +5,7 @@ import app.allinonereminder.data.local.dao.OccurrenceDao
 import app.allinonereminder.data.mapper.toDomain
 import app.allinonereminder.gamify.*
 import app.allinonereminder.model.Item
+import app.allinonereminder.model.isTestAlarm
 import app.allinonereminder.model.Occurrence
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
@@ -64,6 +65,7 @@ class ProgressRepository(
             val occ = entity.toDomain()
             if (profileId != null && occ.profileId != profileId) return@mapNotNull null
             val item = allItems[occ.itemId]?.toDomain() ?: return@mapNotNull null
+            if (item.isTestAlarm) return@mapNotNull null
             mapToOccurrenceRecord(occ, item)
         }
 
@@ -93,7 +95,7 @@ class ProgressRepository(
             val item = allItems[occ.itemId]?.toDomain() ?: continue
             // Adherence counts only resolved doses. Future/unresolved rows are not "due yet" and
             // SUPERSEDED rows are leftovers from edited schedules; visit reminders are not doses.
-            if (!isResolved(occ.status) || item.type == app.allinonereminder.model.ItemType.APPOINTMENT) continue
+            if (!isResolved(occ.status) || item.isTestAlarm || item.type == app.allinonereminder.model.ItemType.APPOINTMENT) continue
             val localDate = Instant.ofEpochMilli(occ.dueAt).atZone(zoneId).toLocalDate()
             occurrencesByDate.getOrPut(localDate) { mutableListOf() }.add(occ to item)
         }
@@ -150,6 +152,7 @@ class ProgressRepository(
             if (occ.status == app.allinonereminder.model.OccurrenceStatus.SUPERSEDED) return@mapNotNull null
             if (profileId != null && occ.profileId != profileId) return@mapNotNull null
             val item = allItems[occ.itemId]?.toDomain() ?: return@mapNotNull null
+            if (item.isTestAlarm) return@mapNotNull null
             occ to item
         }.sortedBy { it.first.dueAt }
     }
