@@ -25,29 +25,44 @@ android {
         }
     }
 
+    // Release signing. Two sources, checked in this order:
+    //  1. keystore.properties in the repo root (local builds; gitignored, see keystore.properties.example)
+    //  2. KEYSTORE_BASE64 / KEYSTORE_PASSWORD / KEY_ALIAS / KEY_PASSWORD env vars (CI)
+    // With neither, the release build falls back to the debug key (app-<version>-debugsigned.apk).
+    val keystoreProps = java.util.Properties().also { props ->
+        val f = rootProject.file("keystore.properties")
+        if (f.exists()) f.inputStream().use { props.load(it) }
+    }
+    val propsStoreFile = keystoreProps.getProperty("storeFile")?.takeIf { it.isNotBlank() }?.let { rootProject.file(it) }
+    val propsReady = propsStoreFile != null && propsStoreFile.exists() &&
+            !keystoreProps.getProperty("storePassword").isNullOrBlank() &&
+            !keystoreProps.getProperty("keyAlias").isNullOrBlank() &&
+            !keystoreProps.getProperty("keyPassword").isNullOrBlank()
+    val envReady = !System.getenv("KEYSTORE_BASE64").isNullOrBlank() &&
+            !System.getenv("KEYSTORE_PASSWORD").isNullOrBlank() &&
+            !System.getenv("KEY_ALIAS").isNullOrBlank() &&
+            !System.getenv("KEY_PASSWORD").isNullOrBlank()
+
     signingConfigs {
         create("release") {
-            val keystoreBase64 = System.getenv("KEYSTORE_BASE64")
-            val keystorePassword = System.getenv("KEYSTORE_PASSWORD")
-            val keyAlias = System.getenv("KEY_ALIAS")
-            val keyPassword = System.getenv("KEY_PASSWORD")
-
-            if (!keystoreBase64.isNullOrBlank() && !keystorePassword.isNullOrBlank() && !keyAlias.isNullOrBlank() && !keyPassword.isNullOrBlank()) {
+            if (propsReady) {
+                storeFile = propsStoreFile
+                storePassword = keystoreProps.getProperty("storePassword")
+                keyAlias = keystoreProps.getProperty("keyAlias")
+                keyPassword = keystoreProps.getProperty("keyPassword")
+            } else if (envReady) {
                 val keystoreFile = File(layout.buildDirectory.asFile.get(), "release.keystore")
                 keystoreFile.parentFile.mkdirs()
-                keystoreFile.writeBytes(Base64.getDecoder().decode(keystoreBase64))
+                keystoreFile.writeBytes(Base64.getDecoder().decode(System.getenv("KEYSTORE_BASE64")))
                 storeFile = keystoreFile
-                storePassword = keystorePassword
-                this.keyAlias = keyAlias
-                this.keyPassword = keyPassword
+                storePassword = System.getenv("KEYSTORE_PASSWORD")
+                keyAlias = System.getenv("KEY_ALIAS")
+                keyPassword = System.getenv("KEY_PASSWORD")
             }
         }
     }
 
-    val isReleaseSigned = !System.getenv("KEYSTORE_BASE64").isNullOrBlank() &&
-            !System.getenv("KEYSTORE_PASSWORD").isNullOrBlank() &&
-            !System.getenv("KEY_ALIAS").isNullOrBlank() &&
-            !System.getenv("KEY_PASSWORD").isNullOrBlank()
+    val isReleaseSigned = propsReady || envReady
 
     buildTypes {
         release {
