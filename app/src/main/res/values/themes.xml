@@ -1,4 +1,9 @@
 <resources>
-    <style name="Theme.AllInOneReminder" parent="android:Theme.Material.Light.NoActionBar" />
+    <style name="Theme.AllInOneReminder" parent="android:Theme.Material.Light.NoActionBar">
+        <item name="android:windowBackground">#F6FAF8</item>
+        <item name="android:statusBarColor">#F6FAF8</item>
+        <item name="android:navigationBarColor">#EAF0ED</item>
+        <item name="android:windowLightStatusBar">true</item>
+        <item name="android:windowLightNavigationBar">true</item>
+    </style>
 </resources>
-

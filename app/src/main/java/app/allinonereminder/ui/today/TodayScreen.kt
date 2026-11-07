@@ -56,8 +56,8 @@ fun TodayScreen(
             TopAppBar(
                 title = { Text("Today's Schedule", fontWeight = FontWeight.Bold) },
                 colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.primaryContainer,
-                    titleContentColor = MaterialTheme.colorScheme.onPrimaryContainer
+                    containerColor = MaterialTheme.colorScheme.background,
+                    titleContentColor = MaterialTheme.colorScheme.onBackground
                 ),
                 actions = {
                     IconButton(
@@ -433,43 +433,50 @@ private fun NextAlarmCountdownHeader(
     nextAlarmEpochMillis: Long?,
     onStartMealClick: () -> Unit
 ) {
-    Card(
+    val primary = MaterialTheme.colorScheme.primary
+    val onPrimary = MaterialTheme.colorScheme.onPrimary
+    Box(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 6.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer),
-        shape = RoundedCornerShape(12.dp)
+            .padding(horizontal = 16.dp, vertical = 6.dp)
+            .clip(MaterialTheme.shapes.large)
+            .background(
+                androidx.compose.ui.graphics.Brush.linearGradient(
+                    listOf(primary, MaterialTheme.colorScheme.secondary)
+                )
+            )
     ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(14.dp),
+                .padding(horizontal = 20.dp, vertical = 18.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
             Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    text = "Next Alarm",
-                    style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.onSecondaryContainer
+                    text = "Next reminder",
+                    style = MaterialTheme.typography.labelLarge,
+                    color = onPrimary.copy(alpha = 0.85f)
                 )
                 val timeText = if (nextAlarmEpochMillis != null) {
                     val time = Instant.ofEpochMilli(nextAlarmEpochMillis).atZone(ZoneId.systemDefault())
                     time.format(DateTimeFormatter.ofPattern("hh:mm a"))
                 } else {
-                    "None pending today"
+                    "All done for today"
                 }
                 Text(
                     text = timeText,
-                    style = MaterialTheme.typography.titleLarge,
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.onSecondaryContainer
+                    style = MaterialTheme.typography.headlineMedium,
+                    color = onPrimary
                 )
             }
 
             OutlinedButton(
                 onClick = onStartMealClick,
-                modifier = Modifier.defaultMinSize(minHeight = 44.dp)
+                modifier = Modifier.defaultMinSize(minHeight = 44.dp),
+                colors = ButtonDefaults.outlinedButtonColors(contentColor = onPrimary),
+                border = androidx.compose.foundation.BorderStroke(1.dp, onPrimary.copy(alpha = 0.6f))
             ) {
                 Icon(Icons.Default.Restaurant, contentDescription = null, modifier = Modifier.size(18.dp))
                 Spacer(modifier = Modifier.width(6.dp))
@@ -497,34 +504,43 @@ private fun OccurrenceTimelineCard(
         modifier = Modifier
             .fillMaxWidth()
             .clickable(onClick = onClick),
-        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLowest),
+        border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
     ) {
-        Column(modifier = Modifier.padding(14.dp)) {
+        Column(modifier = Modifier.padding(16.dp)) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(
-                        imageVector = when (item.type) {
-                            ItemType.MEDICINE -> Icons.Default.Medication
-                            ItemType.INJECTION -> Icons.Default.Vaccines
-                            ItemType.WATER_DRINK -> Icons.Default.WaterDrop
-                            ItemType.FOOD -> Icons.Default.Restaurant
-                            ItemType.EXERCISE -> Icons.Default.FitnessCenter
-                            ItemType.APPOINTMENT -> Icons.Default.Event
-                            else -> Icons.Default.HealthAndSafety
-                        },
-                        contentDescription = item.type.name,
-                        tint = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.size(24.dp)
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
+                    Box(
+                        modifier = Modifier
+                            .size(40.dp)
+                            .clip(CircleShape)
+                            .background(MaterialTheme.colorScheme.primaryContainer),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = when (item.type) {
+                                ItemType.MEDICINE -> Icons.Default.Medication
+                                ItemType.INJECTION -> Icons.Default.Vaccines
+                                ItemType.WATER_DRINK -> Icons.Default.WaterDrop
+                                ItemType.FOOD -> Icons.Default.Restaurant
+                                ItemType.EXERCISE -> Icons.Default.FitnessCenter
+                                ItemType.APPOINTMENT -> Icons.Default.Event
+                                else -> Icons.Default.HealthAndSafety
+                            },
+                            contentDescription = item.type.name,
+                            tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                            modifier = Modifier.size(22.dp)
+                        )
+                    }
+                    Spacer(modifier = Modifier.width(12.dp))
                     Text(
                         text = formattedTime,
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold
+                        style = MaterialTheme.typography.titleLarge
                     )
                 }
 
@@ -537,8 +553,7 @@ private fun OccurrenceTimelineCard(
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
                         text = item.name,
-                        style = MaterialTheme.typography.titleLarge,
-                        fontWeight = FontWeight.Bold
+                        style = MaterialTheme.typography.titleMedium
                     )
                     val doseLabel = if (item.type == ItemType.APPOINTMENT) {
                         effectiveDoseAmount(uiModel.schedule, item)
@@ -593,7 +608,7 @@ private fun OccurrenceTimelineCard(
                     ) {
                         Text(if (item.type == ItemType.APPOINTMENT) "Got it" else "Take")
                     }
-                    OutlinedButton(
+                    FilledTonalButton(
                         onClick = onSnooze,
                         modifier = Modifier
                             .weight(1f)
