@@ -31,6 +31,7 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import app.allinonereminder.backup.BackupPreview
+import app.allinonereminder.ui.components.*
 import app.allinonereminder.ui.theme.AllInOneReminderTheme
 import java.time.Instant
 import java.time.ZoneId
@@ -158,100 +159,28 @@ fun SettingsScreen(
                 }
             }
 
-            // Profiles & Family Members Card
-            Card(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clickable(onClick = onNavigateToProfiles),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.tertiaryContainer)
-            ) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(16.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(
-                            imageVector = Icons.Default.People,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.onTertiaryContainer,
-                            modifier = Modifier.size(32.dp)
-                        )
-                        Spacer(modifier = Modifier.width(12.dp))
-                        Column {
-                            Text(
-                                text = "Profiles & Family Members",
-                                fontWeight = FontWeight.Bold,
-                                style = MaterialTheme.typography.titleMedium,
-                                color = MaterialTheme.colorScheme.onTertiaryContainer
-                            )
-                            Text(
-                                text = "Add and manage patient profiles and colors",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onTertiaryContainer
-                            )
-                        }
-                    }
-                    Icon(
-                        imageVector = Icons.Default.ChevronRight,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.onTertiaryContainer
-                    )
-                }
-            }
+            SettingsNavCard(
+                icon = Icons.Default.People,
+                title = "Profiles & family members",
+                subtitle = "Add and manage profiles and colours",
+                onClick = onNavigateToProfiles
+            )
 
-            // Permission Diagnostics Card
-            Card(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clickable(onClick = onNavigateToPermissions),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer)
-            ) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(16.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(
-                            imageVector = Icons.Default.HealthAndSafety,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.onSecondaryContainer,
-                            modifier = Modifier.size(32.dp)
-                        )
-                        Spacer(modifier = Modifier.width(12.dp))
-                        Column {
-                            Text(
-                                text = "Permission Health Check",
-                                fontWeight = FontWeight.Bold,
-                                style = MaterialTheme.typography.titleMedium,
-                                color = MaterialTheme.colorScheme.onSecondaryContainer
-                            )
-                            Text(
-                                text = "Verify alarms, notifications, Doze & OEM settings",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSecondaryContainer
-                            )
-                        }
-                    }
-                    Icon(
-                        imageVector = Icons.Default.ChevronRight,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.onSecondaryContainer
-                    )
-                }
-            }
+            SettingsNavCard(
+                icon = Icons.Default.HealthAndSafety,
+                title = "Permission health check",
+                subtitle = "Verify alarms, notifications and battery settings",
+                onClick = onNavigateToPermissions
+            )
 
             // Sounds & Alarm Timing
-            Text("Alarm & Sound Preferences", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+            Text("Alarm & Sound Preferences", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(top = 8.dp))
 
             Card(
                 modifier = Modifier.fillMaxWidth(),
-                elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLowest),
+                border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+                elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
             ) {
                 Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
                     // Default Snooze
@@ -260,7 +189,7 @@ fun SettingsScreen(
                         Spacer(modifier = Modifier.height(6.dp))
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             listOf(5, 10, 15, 20).forEach { mins ->
-                                FilterChip(
+                                ChoiceChip(
                                     selected = uiState.defaultSnoozeMinutes == mins,
                                     onClick = { onUpdateSnooze(mins) },
                                     label = { Text("${mins}m") }
@@ -282,7 +211,7 @@ fun SettingsScreen(
                         Spacer(modifier = Modifier.height(6.dp))
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             listOf(60 to "1m", 120 to "2m", 300 to "5m", 600 to "10m").forEach { (sec, label) ->
-                                FilterChip(
+                                ChoiceChip(
                                     selected = uiState.ringDurationSeconds == sec,
                                     onClick = { onUpdateRingDuration(sec) },
                                     label = { Text(label) }
@@ -389,10 +318,12 @@ fun SettingsScreen(
             }
 
             // Backup & Restore Section (§17 / M6)
-            Text("Backup & Restore", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+            Text("Backup & Restore", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(top = 8.dp))
             Card(
                 modifier = Modifier.fillMaxWidth(),
-                elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLowest),
+                border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+                elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
             ) {
                 Column(modifier = Modifier.padding(16.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
@@ -451,7 +382,7 @@ fun SettingsScreen(
             }
 
             // Developer / Debug Helpers
-            Text("Debug Tools", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+            Text("Debug Tools", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(top = 8.dp))
             OutlinedButton(
                 onClick = onSeedData,
                 modifier = Modifier
@@ -500,7 +431,7 @@ fun SettingsScreen(
                         "Enter a passphrase to encrypt your backup with AES-256-GCM. You will need this password to restore your data.",
                         style = MaterialTheme.typography.bodySmall
                     )
-                    OutlinedTextField(
+                    AppTextField(
                         value = password,
                         onValueChange = { password = it },
                         label = { Text("Passphrase") },
@@ -509,7 +440,7 @@ fun SettingsScreen(
                         singleLine = true,
                         modifier = Modifier.fillMaxWidth()
                     )
-                    OutlinedTextField(
+                    AppTextField(
                         value = confirmPassword,
                         onValueChange = { confirmPassword = it },
                         label = { Text("Confirm Passphrase") },
@@ -565,7 +496,7 @@ fun SettingsScreen(
                         "Enter the passphrase used when creating this .airbackup archive to decrypt and inspect the dataset.",
                         style = MaterialTheme.typography.bodySmall
                     )
-                    OutlinedTextField(
+                    AppTextField(
                         value = restorePassword,
                         onValueChange = { restorePassword = it },
                         label = { Text("Passphrase") },
