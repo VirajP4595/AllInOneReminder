@@ -558,7 +558,11 @@ private fun OccurrenceTimelineCard(
                     val doseLabel = if (item.type == ItemType.APPOINTMENT) {
                         effectiveDoseAmount(uiModel.schedule, item)
                     } else {
-                        "${effectiveDoseAmount(uiModel.schedule, item)} ${item.dosageUnit} ${item.form ?: ""}".trim()
+                        listOf(
+                            effectiveDoseAmount(uiModel.schedule, item),
+                            item.dosageUnit,
+                            item.form?.takeUnless { it.equals(item.dosageUnit, ignoreCase = true) }
+                        ).filter { !it.isNullOrBlank() }.joinToString(" ")
                     }
                     Text(
                         text = doseLabel,
