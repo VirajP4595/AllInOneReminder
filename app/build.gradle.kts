@@ -1,5 +1,4 @@
 import java.util.Base64
-import java.util.Properties
 
 plugins {
     alias(libs.plugins.android.application)
@@ -30,15 +29,32 @@ android {
     //  1. keystore.properties in the repo root (local builds; gitignored, see keystore.properties.example)
     //  2. KEYSTORE_BASE64 / KEYSTORE_PASSWORD / KEY_ALIAS / KEY_PASSWORD env vars (CI)
     // With neither, the release build falls back to the debug key (app-<version>-debugsigned.apk).
-    val keystoreProps = Properties().also { props ->
-        val f = rootProject.file("keystore.properties")
-        if (f.exists()) f.inputStream().use { props.load(it) }
+    // Parsed by hand (not java.util.Properties) so a backslash in a password is never treated as an
+    // escape, and so an editor's BOM, UTF-16 encoding, CRLF or stray spaces do not break the file.
+    val keystorePropsFile = rootProject.file("keystore.properties")
+    val keystoreProps = mutableMapOf<String, String>()
+    if (keystorePropsFile.exists()) {
+        var text = keystorePropsFile.readText(Charsets.UTF_8)
+        if (text.contains('\u0000')) text = keystorePropsFile.readText(Charsets.UTF_16)
+        text.removePrefix("\uFEFF").lines().forEach { raw ->
+            val line = raw.trim()
+            if (line.isEmpty() || line.startsWith("#")) return@forEach
+            val i = line.indexOf('=')
+            if (i > 0) keystoreProps[line.substring(0, i).trim()] = line.substring(i + 1).trim()
+        }
     }
-    val propsStoreFile = keystoreProps.getProperty("storeFile")?.takeIf { it.isNotBlank() }?.let { rootProject.file(it) }
-    val propsReady = propsStoreFile != null && propsStoreFile.exists() &&
-            !keystoreProps.getProperty("storePassword").isNullOrBlank() &&
-            !keystoreProps.getProperty("keyAlias").isNullOrBlank() &&
-            !keystoreProps.getProperty("keyPassword").isNullOrBlank()
+    val propsStoreFile = keystoreProps["storeFile"]?.takeIf { it.isNotBlank() }
+        ?.replace('\\', '/')?.let { rootProject.file(it) }
+    val propsProblems = buildList {
+        if (keystorePropsFile.exists()) {
+            if (propsStoreFile == null) add("storeFile is missing")
+            else if (!propsStoreFile.exists()) add("storeFile not found at ${propsStoreFile.path}")
+            for (k in listOf("storePassword", "keyAlias", "keyPassword")) {
+                if (keystoreProps[k].isNullOrBlank()) add("$k is missing or blank")
+            }
+        }
+    }
+    val propsReady = keystorePropsFile.exists() && propsProblems.isEmpty()
     val envReady = !System.getenv("KEYSTORE_BASE64").isNullOrBlank() &&
             !System.getenv("KEYSTORE_PASSWORD").isNullOrBlank() &&
             !System.getenv("KEY_ALIAS").isNullOrBlank() &&
@@ -48,9 +64,9 @@ android {
         create("release") {
             if (propsReady) {
                 storeFile = propsStoreFile
-                storePassword = keystoreProps.getProperty("storePassword")
-                keyAlias = keystoreProps.getProperty("keyAlias")
-                keyPassword = keystoreProps.getProperty("keyPassword")
+                storePassword = keystoreProps["storePassword"]
+                keyAlias = keystoreProps["keyAlias"]
+                keyPassword = keystoreProps["keyPassword"]
             } else if (envReady) {
                 val keystoreFile = File(layout.buildDirectory.asFile.get(), "release.keystore")
                 keystoreFile.parentFile.mkdirs()
@@ -64,6 +80,13 @@ android {
     }
 
     val isReleaseSigned = propsReady || envReady
+    if (!isReleaseSigned) {
+        val why = if (!keystorePropsFile.exists()) "keystore.properties not found at ${keystorePropsFile.path}"
+        else propsProblems.joinToString("; ")
+        logger.lifecycle("Release signing: NOT using a release key ($why). Falling back to the debug key.")
+    } else {
+        logger.lifecycle("Release signing: using the release key from " + if (propsReady) "keystore.properties" else "CI secrets")
+    }
 
     buildTypes {
         release {
