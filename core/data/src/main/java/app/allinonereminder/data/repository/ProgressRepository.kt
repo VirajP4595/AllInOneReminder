@@ -26,7 +26,7 @@ fun calculateDayBucket(totalDue: Int, onTime: Int): DayAdherenceBucket {
     return when {
         totalDue == 0 -> DayAdherenceBucket.NONE_DUE
         onTime == totalDue -> DayAdherenceBucket.PERFECT
-        onTime.toDouble() / totalDue >= 0.75 -> DayAdherenceBucket.GOOD
+        onTime.toDouble() / totalDue >= 0.8 -> DayAdherenceBucket.GOOD
         onTime > 0 -> DayAdherenceBucket.PARTIAL
         else -> DayAdherenceBucket.NONE_TAKEN
     }

@@ -16,10 +16,17 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
     <uses-permission android:name="android.permission.CAMERA" />
+    <!-- Health Connect (read-only, on-device). No INTERNET permission is involved. -->
+    <uses-permission android:name="android.permission.health.READ_STEPS" />
+    <uses-permission android:name="android.permission.health.READ_EXERCISE" />
 
     <uses-feature android:name="android.hardware.camera" android:required="false" />
 
     <!-- NO INTERNET PERMISSION IN PHASE 1 -->
+
+    <queries>
+        <package android:name="com.google.android.apps.healthdata" />
+    </queries>
 
     <application
         android:name=".AllInOneReminderApplication"
@@ -50,6 +57,27 @@
             android:showForAllUsers="true"
             android:excludeFromRecents="true"
             android:theme="@style/Theme.AllInOneReminder" />
+
+        <activity
+            android:name=".health.HealthPermissionsRationaleActivity"
+            android:exported="true"
+            android:theme="@style/Theme.AllInOneReminder">
+            <intent-filter>
+                <action android:name="androidx.health.ACTION_SHOW_PERMISSIONS_RATIONALE" />
+            </intent-filter>
+        </activity>
+
+        <!-- Android 14+: Health Connect opens this alias from its permission-usage screen. -->
+        <activity-alias
+            android:name="ViewPermissionUsageActivity"
+            android:exported="true"
+            android:permission="android.permission.START_VIEW_PERMISSION_USAGE"
+            android:targetActivity=".health.HealthPermissionsRationaleActivity">
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW_PERMISSION_USAGE" />
+                <category android:name="android.intent.category.HEALTH_PERMISSIONS" />
+            </intent-filter>
+        </activity-alias>
 
         <service
             android:name=".alarm.AlarmRingService"

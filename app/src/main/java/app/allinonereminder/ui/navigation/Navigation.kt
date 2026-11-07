@@ -397,6 +397,9 @@ fun MainAppNavigation(
                     onUpdateSnooze = viewModel::updateSnoozeMinutes,
                     onUpdateRingDuration = viewModel::updateRingDurationSeconds,
                     onUpdateSpeakReminders = viewModel::updateSpeakReminders,
+                    onRefreshHealthStatus = viewModel::refreshHealthStatus,
+                    onSetHealthVerification = viewModel::setHealthVerification,
+                    onHealthPermissionResult = viewModel::onHealthPermissionResult,
                     onSeedData = {
                         coroutineScope.launch {
                             val msg = sampleDataSeeder.seedSampleData()

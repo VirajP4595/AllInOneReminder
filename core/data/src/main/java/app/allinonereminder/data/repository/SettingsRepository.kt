@@ -23,6 +23,7 @@ data class UserSettings(
     val soundGentle: String = "gentle",
     val vibrationEnabled: Boolean = true,
     val speakRemindersEnabled: Boolean = false,
+    val healthConnectVerifyEnabled: Boolean = false,
     val onboardingCompleted: Boolean = false,
     val deviceId: String
 )
@@ -38,6 +39,7 @@ class SettingsRepository(
         val KEY_SOUND_GENTLE = stringPreferencesKey("sound_gentle")
         val KEY_VIBRATION = booleanPreferencesKey("vibration_enabled")
         val KEY_SPEAK_REMINDERS = booleanPreferencesKey("speak_reminders_enabled")
+        val KEY_HEALTH_CONNECT_VERIFY = booleanPreferencesKey("health_connect_verify_enabled")
         val KEY_ONBOARDING_DONE = booleanPreferencesKey("onboarding_completed")
         val KEY_DEVICE_ID = stringPreferencesKey("device_id")
         val KEY_LAST_RESCHEDULE_ERROR = stringPreferencesKey("last_reschedule_error")
@@ -66,6 +68,7 @@ class SettingsRepository(
             soundGentle = prefs[KEY_SOUND_GENTLE] ?: "gentle",
             vibrationEnabled = prefs[KEY_VIBRATION] ?: true,
             speakRemindersEnabled = prefs[KEY_SPEAK_REMINDERS] ?: false,
+            healthConnectVerifyEnabled = prefs[KEY_HEALTH_CONNECT_VERIFY] ?: false,
             onboardingCompleted = prefs[KEY_ONBOARDING_DONE] ?: false,
             deviceId = prefs[KEY_DEVICE_ID] ?: ""
         )
@@ -103,6 +106,12 @@ class SettingsRepository(
     suspend fun setSpeakRemindersEnabled(enabled: Boolean) {
         dataStore.edit { prefs ->
             prefs[KEY_SPEAK_REMINDERS] = enabled
+        }
+    }
+
+    suspend fun setHealthConnectVerifyEnabled(enabled: Boolean) {
+        dataStore.edit { prefs ->
+            prefs[KEY_HEALTH_CONNECT_VERIFY] = enabled
         }
     }
 

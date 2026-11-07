@@ -28,6 +28,7 @@ import app.allinonereminder.model.OccurrenceStatus
 import app.allinonereminder.model.Profile
 import app.allinonereminder.model.ScheduleAnchorType
 import app.allinonereminder.model.effectiveDoseAmount
+import app.allinonereminder.health.ExerciseVerifier
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
@@ -84,6 +85,9 @@ class AlarmRingService : Service() {
 
     @Inject
     lateinit var alarmCoordinator: AlarmCoordinator
+
+    @Inject
+    lateinit var exerciseVerifier: ExerciseVerifier
 
     private var mediaPlayer: MediaPlayer? = null
     private var vibrator: Vibrator? = null
@@ -195,11 +199,29 @@ class AlarmRingService : Service() {
         return START_NOT_STICKY
     }
 
-    private suspend fun handleRinging(occurrenceIds: Array<String>) {
-        val occurrences = occurrenceIds.mapNotNull { occurrenceRepository.getByIdSync(it) }
+    private suspend fun handleRinging(requestedIds: Array<String>) {
+        val requested = requestedIds.mapNotNull { occurrenceRepository.getByIdSync(it) }
+
+        // Health Connect: an exercise the phone already saw is completed instead of ringing.
+        val verifiedIds = try {
+            exerciseVerifier.completeSatisfied(requested)
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            emptySet()
+        }
+        val occurrences = requested.filter { it.id !in verifiedIds }
+        if (verifiedIds.isNotEmpty()) {
+            activeOccurrenceIds.removeAll(verifiedIds)
+            alarmCoordinator.reschedule("HealthConnect: verified before ringing")
+        }
+        val occurrenceIds = occurrences.map { it.id }.toTypedArray()
         if (occurrences.isEmpty()) {
-            stopForeground(true)
-            stopSelf()
+            if (requested.isEmpty() || activeOccurrenceIds.isEmpty()) {
+                stopSoundAndVibration()
+                stopForeground(true)
+                stopSelf()
+            }
             return
         }
 
@@ -423,6 +445,13 @@ class AlarmRingService : Service() {
                             if (status == TextToSpeech.SUCCESS) {
                                 isTtsReady = true
                                 textToSpeech?.language = Locale.getDefault()
+                                // Speak on the alarm stream so it is heard when media volume is low.
+                                textToSpeech?.setAudioAttributes(
+                                    android.media.AudioAttributes.Builder()
+                                        .setUsage(android.media.AudioAttributes.USAGE_ALARM)
+                                        .setContentType(android.media.AudioAttributes.CONTENT_TYPE_SPEECH)
+                                        .build()
+                                )
                                 textToSpeech?.speak(speechText, TextToSpeech.QUEUE_FLUSH, null, "reminder_speech")
                             }
                         }
