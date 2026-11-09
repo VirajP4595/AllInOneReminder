@@ -46,11 +46,20 @@ class AlarmRingService : Service() {
     companion object {
         const val ACTION_STOP_OCCURRENCE = "app.allinonereminder.action.STOP_OCCURRENCE"
         const val ACTION_STOP_ALL = "app.allinonereminder.action.STOP_ALL"
+        const val ACTION_SILENCE = "app.allinonereminder.action.SILENCE"
         const val EXTRA_OCCURRENCE_ID = "extra_occurrence_id"
 
         /** Tests replace this with a controllable dispatcher so background work is deterministic. */
         @androidx.annotation.VisibleForTesting
         var coroutineDispatcher: kotlinx.coroutines.CoroutineDispatcher = Dispatchers.Default
+
+        /** Stops the sound and vibration but keeps the group, so the screen stays usable without noise. */
+        fun silence(context: Context) {
+            val intent = Intent(context, AlarmRingService::class.java).apply {
+                action = ACTION_SILENCE
+            }
+            context.startService(intent)
+        }
 
         fun stopForOccurrence(context: Context, occurrenceId: String) {
             val intent = Intent(context, AlarmRingService::class.java).apply {
@@ -164,6 +173,15 @@ class AlarmRingService : Service() {
                         nm.notify(AlarmNotificationHelper.NOTIFICATION_ID_RINGING, notification)
                     }
                 }
+            }
+            return START_NOT_STICKY
+        }
+
+        if (action == ACTION_SILENCE) {
+            stopSoundAndVibration()
+            if (activeOccurrenceIds.isEmpty()) {
+                stopForeground(true)
+                stopSelf()
             }
             return START_NOT_STICKY
         }
