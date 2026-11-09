@@ -540,7 +540,7 @@ fun AlarmScreenContent(
             ) {
                 Text(
                     text = firstProfile?.name ?: "All-in-One Reminder",
-                    color = Color.White,
+                    color = app.allinonereminder.ui.components.readableTextColor(profileColor),
                     fontSize = 24.sp,
                     fontWeight = FontWeight.Bold
                 )
