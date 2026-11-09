@@ -772,8 +772,8 @@ class MealFlowsAndGuardsTest {
         val remainingOcc = occurrenceRepo.getByIdSync(occ2.id)
         assertThat(remainingOcc?.status).isEqualTo(OccurrenceStatus.RINGING)
         assertThat(remainingOcc?.remindAt).isEqualTo(occ2.remindAt)
-        assertThat(remainingOcc?.dueAt).isEqualTo(occ2.dueAt)
         assertThat(alarmViewModel.uiState.value.items.map { it.occurrence.id }).containsExactly(occ2.id)
+        assertThat(remainingOcc?.dueAt).isEqualTo(occ2.dueAt)
     }
 
     @Test
