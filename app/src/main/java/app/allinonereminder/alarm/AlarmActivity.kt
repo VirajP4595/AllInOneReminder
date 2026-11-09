@@ -13,6 +13,9 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.defaultMinSize
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -32,6 +35,7 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Checkbox
+import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
@@ -98,6 +102,9 @@ data class AlarmUiState(
     val snoozeOccurrenceId: String? = null,
     val finished: Boolean = false
 )
+
+/** Marker for "snooze every reminder on screen" in [AlarmUiState.snoozeOccurrenceId]. */
+const val SNOOZE_ALL = "__all__"
 
 @HiltViewModel
 class AlarmViewModel @Inject constructor(
@@ -230,6 +237,20 @@ class AlarmViewModel @Inject constructor(
         }
     }
 
+    /** One snooze for everything still on screen, so the group comes back together, once. */
+    fun onSnoozeAllClicked(minutes: Int) {
+        viewModelScope.launch {
+            val newRemindAt = Instant.now().toEpochMilli() + minutes * 60_000L
+            for (uiModel in _uiState.value.items) {
+                occurrenceRepository.snoozeTargeted(uiModel.occurrence.id, newRemindAt)
+                AlarmRingService.stopForOccurrence(context, uiModel.occurrence.id)
+            }
+            dismissSnoozeDialog()
+            alarmCoordinator.reschedule("Alarm: Snooze all")
+            _uiState.value = _uiState.value.copy(items = emptyList(), finished = true)
+        }
+    }
+
     fun onSnoozeClicked(occurrenceId: String, minutes: Int) {
         viewModelScope.launch {
             val now = Instant.now()
@@ -329,23 +350,16 @@ class AlarmViewModel @Inject constructor(
 
     private suspend fun checkCompletion(actedOccurrenceId: String) {
         AlarmRingService.stopForOccurrence(context, actedOccurrenceId)
-        val now = Instant.now()
         val remaining = _uiState.value.items.filter { it.occurrence.id != actedOccurrenceId }
 
-        // Group re-ring: remaining items get remindAt = now + reRingMinutes; dueAt stays the intended
-        // time so MISSED is still judged from it (§16 / review B3 / R2-1)
-        for (itemUi in remaining) {
-            val reRingMs = itemUi.item.reRingMinutes * 60_000L
-            val newDue = now.toEpochMilli() + reRingMs
-            occurrenceRepository.updateOccurrence(
-                itemUi.occurrence.copy(
-                    remindAt = newDue,
-                    updatedAt = now.toEpochMilli()
-                )
-            )
-        }
-
+        // The rest stay on screen and stay RINGING; the ring service owns their re-ring and, if the
+        // screen is left alone, puts them all back on ONE shared re-ring time. Moving each item's
+        // reminder time here is what made a group of reminders ring again after every single tap.
         _uiState.value = _uiState.value.copy(items = remaining)
+        if (remaining.isNotEmpty()) {
+            // The user is handling the group, so stop the noise while the rest wait on screen.
+            AlarmRingService.silence(context)
+        }
         alarmCoordinator.reschedule("Alarm: Acted on $actedOccurrenceId")
         if (remaining.isEmpty()) {
             _uiState.value = _uiState.value.copy(finished = true)
@@ -358,6 +372,10 @@ class AlarmViewModel @Inject constructor(
 
     fun dismissSkipDialog() {
         _uiState.value = _uiState.value.copy(skipOccurrenceId = null)
+    }
+
+    fun showSnoozeAllDialog() {
+        _uiState.value = _uiState.value.copy(snoozeOccurrenceId = SNOOZE_ALL)
     }
 
     fun showSnoozeDialog(occurrenceId: String) {
@@ -409,7 +427,7 @@ class AlarmActivity : ComponentActivity() {
         }
 
         setContent {
-            MaterialTheme {
+            app.allinonereminder.ui.theme.AllInOneReminderTheme {
                 Surface(
                     modifier = Modifier.fillMaxSize(),
                     color = MaterialTheme.colorScheme.background
@@ -427,6 +445,7 @@ class AlarmActivity : ComponentActivity() {
                             onTaken = { id -> viewModel.onTakenClicked(id) },
                             onAllTaken = { viewModel.onAllTakenClicked() },
                             onSnooze = { id -> viewModel.showSnoozeDialog(id) },
+                            onSnoozeAll = { viewModel.showSnoozeAllDialog() },
                             onSkip = { id -> viewModel.showSkipDialog(id) },
                             onNotEatenYet = { id, afterEating, minutes ->
                                 viewModel.onNotEatenYetClicked(id, afterEating, minutes)
@@ -467,7 +486,8 @@ class AlarmActivity : ComponentActivity() {
                                 onDismiss = { viewModel.dismissSnoozeDialog() },
                                 onSelect = { min ->
                                     state.snoozeOccurrenceId?.let { id ->
-                                        viewModel.onSnoozeClicked(id, min)
+                                        if (id == SNOOZE_ALL) viewModel.onSnoozeAllClicked(min)
+                                        else viewModel.onSnoozeClicked(id, min)
                                     }
                                 }
                             )
@@ -497,6 +517,7 @@ fun AlarmScreenContent(
     onTaken: (String) -> Unit,
     onAllTaken: () -> Unit,
     onSnooze: (String) -> Unit,
+    onSnoozeAll: () -> Unit,
     onSkip: (String) -> Unit,
     onNotEatenYet: (String, Boolean, Int) -> Unit,
     onStartingMealNow: (String) -> Unit
@@ -519,7 +540,7 @@ fun AlarmScreenContent(
             ) {
                 Text(
                     text = firstProfile?.name ?: "All-in-One Reminder",
-                    color = Color.White,
+                    color = app.allinonereminder.ui.components.readableTextColor(profileColor),
                     fontSize = 24.sp,
                     fontWeight = FontWeight.Bold
                 )
@@ -528,17 +549,41 @@ fun AlarmScreenContent(
             Spacer(modifier = Modifier.height(16.dp))
 
             if (state.items.size > 1) {
-                Button(
-                    onClick = onAllTaken,
+                Text(
+                    text = "${state.items.size} reminders due together",
+                    style = MaterialTheme.typography.titleMedium,
+                    modifier = Modifier.padding(horizontal = 16.dp)
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                Row(
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(horizontal = 16.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
-                    Icon(Icons.Default.Check, contentDescription = null)
-                    Spacer(modifier = Modifier.width(8.dp))
-                    val allActionLabel = if (state.items.all { it.item.type == ItemType.APPOINTMENT }) "All Acknowledged" else "All Taken"
-                    Text("$allActionLabel (${state.items.size})", fontSize = 18.sp)
+                    val allActionLabel = if (state.items.all { it.item.type == ItemType.APPOINTMENT }) "All done" else "All taken"
+                    Button(
+                        onClick = onAllTaken,
+                        modifier = Modifier
+                            .weight(1.3f)
+                            .defaultMinSize(minHeight = 52.dp),
+                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp)
+                    ) {
+                        Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(20.dp))
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(allActionLabel, maxLines = 1, softWrap = false)
+                    }
+                    FilledTonalButton(
+                        onClick = onSnoozeAll,
+                        modifier = Modifier
+                            .weight(1f)
+                            .defaultMinSize(minHeight = 52.dp),
+                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp)
+                    ) {
+                        Icon(Icons.Default.Schedule, contentDescription = null, modifier = Modifier.size(20.dp))
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text("Snooze all", maxLines = 1, softWrap = false)
+                    }
                 }
                 Spacer(modifier = Modifier.height(16.dp))
             }
@@ -581,7 +626,9 @@ fun AlarmItemCard(
 
     Card(
         modifier = Modifier.fillMaxWidth(),
-        elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLowest),
+        border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
             Text(
@@ -631,39 +678,45 @@ fun AlarmItemCard(
 
             Spacer(modifier = Modifier.height(16.dp))
 
-            // Main Action Buttons
+            // Main actions: one big primary button, then Snooze and Skip side by side.
+            Button(
+                onClick = onTaken,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .defaultMinSize(minHeight = 56.dp)
+            ) {
+                Icon(Icons.Default.Check, contentDescription = null)
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(if (isAppointment) "Got it" else "Taken", fontSize = 18.sp, maxLines = 1)
+            }
+            Spacer(modifier = Modifier.height(10.dp))
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
             ) {
-                Button(
-                    onClick = onTaken,
-                    modifier = Modifier.weight(1f),
-                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
-                ) {
-                    Icon(Icons.Default.Check, contentDescription = null)
-                    Spacer(modifier = Modifier.width(4.dp))
-                    Text(if (isAppointment) "Got it" else "Taken", fontSize = 16.sp)
-                }
-
-                Button(
+                FilledTonalButton(
                     onClick = onSnooze,
-                    modifier = Modifier.weight(1f),
-                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondary)
+                    modifier = Modifier
+                        .weight(1f)
+                        .defaultMinSize(minHeight = 48.dp),
+                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp)
                 ) {
-                    Icon(Icons.Default.Schedule, contentDescription = null)
-                    Spacer(modifier = Modifier.width(4.dp))
-                    Text("Snooze", fontSize = 16.sp)
+                    Icon(Icons.Default.Schedule, contentDescription = null, modifier = Modifier.size(20.dp))
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text("Snooze", maxLines = 1, softWrap = false)
                 }
 
                 if (!isAppointment) {
                     OutlinedButton(
                         onClick = onSkip,
-                        modifier = Modifier.weight(1f)
+                        modifier = Modifier
+                            .weight(1f)
+                            .defaultMinSize(minHeight = 48.dp),
+                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp)
                     ) {
-                        Icon(Icons.Default.Close, contentDescription = null)
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text("Skip", fontSize = 16.sp)
+                        Icon(Icons.Default.Close, contentDescription = null, modifier = Modifier.size(20.dp))
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text("Skip", maxLines = 1, softWrap = false)
                     }
                 }
             }

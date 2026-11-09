@@ -427,7 +427,7 @@ private fun ScheduleDraftCard(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text("Schedule #$index", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleSmall)
-                IconButton(onClick = onRemove, modifier = Modifier.size(36.dp)) {
+                IconButton(onClick = onRemove) {
                     Icon(Icons.Default.DeleteOutline, contentDescription = "Delete schedule", tint = MaterialTheme.colorScheme.error)
                 }
             }

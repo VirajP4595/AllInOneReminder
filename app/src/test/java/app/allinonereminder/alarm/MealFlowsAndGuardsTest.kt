@@ -672,7 +672,7 @@ class MealFlowsAndGuardsTest {
     }
 
     @Test
-    fun groupAlarm_takeOneItem_keepsRemainingItemsRingingAndSchedulesReRing() = runBlocking {
+    fun groupAlarm_takeOneItem_keepsRemainingItemsRingingWithoutMovingTheirReminder() = runBlocking {
         val profile = profileRepo.createProfile("Charlie", 0x0000FF, deviceId = "dev-1")
         val now = System.currentTimeMillis()
         val todayStr = LocalDate.now(ZoneId.systemDefault()).toString()
@@ -754,7 +754,8 @@ class MealFlowsAndGuardsTest {
             Thread.sleep(10)
         }
 
-        // Taking item1 should NOT re-fire group immediately; remaining item2 gets dueAt = now + reRingMinutes
+        // Taking item1 must NOT push item2's reminder forward: item2 stays on screen and RINGING, and
+        // the ring service re-rings any leftovers once, together, if the screen is left alone.
         alarmViewModel.onTakenClicked(occ1.id, force = true)
 
         for (i in 0 until 50) {
@@ -767,9 +768,11 @@ class MealFlowsAndGuardsTest {
         assertThat(occurrenceRepo.getByIdSync(occ1.id)?.status).isEqualTo(OccurrenceStatus.TAKEN)
         assertThat(alarmViewModel.uiState.value.finished).isFalse()
 
-        // Occurrence 2 remindAt moved to the future (now + reRingMinutes 10 min); dueAt is unchanged
+        // Occurrence 2 is untouched: still RINGING, same reminder time, same due time
         val remainingOcc = occurrenceRepo.getByIdSync(occ2.id)
-        assertThat(remainingOcc?.remindAt).isAtLeast(now + 9 * 60_000L)
+        assertThat(remainingOcc?.status).isEqualTo(OccurrenceStatus.RINGING)
+        assertThat(remainingOcc?.remindAt).isEqualTo(occ2.remindAt)
+        assertThat(alarmViewModel.uiState.value.items.map { it.occurrence.id }).containsExactly(occ2.id)
         assertThat(remainingOcc?.dueAt).isEqualTo(occ2.dueAt)
     }
 

@@ -22,6 +22,9 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import app.allinonereminder.data.repository.DayAdherence
@@ -251,6 +254,14 @@ fun MonthCalendarCard(
                                             if (isSelected) Modifier.border(2.dp, MaterialTheme.colorScheme.primary, CircleShape)
                                             else Modifier
                                         )
+                                        .semantics(mergeDescendants = true) {
+                                            contentDescription = if (adherence == null || adherence.totalDue == 0) {
+                                                "$date, no doses"
+                                            } else {
+                                                "$date, ${adherence.onTime} of ${adherence.totalDue} doses on time"
+                                            }
+                                            role = androidx.compose.ui.semantics.Role.Button
+                                        }
                                         .clickable { onSelectDate(date) },
                                     contentAlignment = Alignment.Center
                                 ) {
@@ -258,7 +269,11 @@ fun MonthCalendarCard(
                                         text = "$dayNumber",
                                         fontSize = 12.sp,
                                         fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
-                                        color = if (adherence?.bucket == DayAdherenceBucket.NONE_DUE) MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f) else Color.White
+                                        color = if (adherence?.bucket == DayAdherenceBucket.NONE_DUE) {
+                                            MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+                                        } else {
+                                            app.allinonereminder.ui.components.readableTextColor(bucketColor(adherence?.bucket ?: DayAdherenceBucket.NONE_DUE))
+                                        }
                                     )
                                 }
                             } else {

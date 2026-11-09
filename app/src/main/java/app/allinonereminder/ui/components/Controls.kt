@@ -53,6 +53,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
@@ -414,3 +415,7 @@ fun SettingsNavCard(
         }
     }
 }
+
+/** Black or white, whichever is readable on [background] (profile colours can be light). */
+fun readableTextColor(background: Color): Color =
+    if (background.luminance() > 0.4f) Color(0xFF1B1B1B) else Color.White

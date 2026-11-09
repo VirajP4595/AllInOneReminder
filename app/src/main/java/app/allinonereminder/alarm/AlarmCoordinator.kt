@@ -210,14 +210,20 @@ class AlarmCoordinator @Inject constructor(
         val updatedUnresolved = occurrenceRepository.getUnresolvedSync()
         val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
 
-        val earliestOccurrence = updatedUnresolved.minByOrNull { it.remindAt }
+        // Rows the ring service is ringing right now are owned by it (its auto-silence puts them back
+        // on one shared re-ring time). Counting them here would fire the alarm again immediately
+        // each time anything is acted on, which is what made one set of reminders ring several times.
+        // The ownership expires so a row left RINGING by a crash is still rescheduled.
+        val nowMillis = now.toEpochMilli()
+        val schedulable = updatedUnresolved.filterNot {
+            it.status == OccurrenceStatus.RINGING && nowMillis - it.updatedAt < RINGING_OWNERSHIP_MILLIS
+        }
+        val earliestOccurrence = schedulable.minByOrNull { it.remindAt }
 
         val result = if (earliestOccurrence != null) {
-            // Group occurrences due at the same minute based on remindAt
-            val remindMinute = earliestOccurrence.remindAt / 60_000L
-            val simultaneousOccurrences = updatedUnresolved.filter {
-                (it.remindAt / 60_000L) == remindMinute
-            }
+            // Reminders due within a few minutes of each other ring together, once
+            val bundleEnd = earliestOccurrence.remindAt + BUNDLE_WINDOW_MILLIS
+            val simultaneousOccurrences = schedulable.filter { it.remindAt <= bundleEnd }
             val ids = simultaneousOccurrences.map { it.id }.toTypedArray()
 
             val alarmIntent = Intent(context, AlarmReceiver::class.java).apply {
@@ -293,6 +299,12 @@ class AlarmCoordinator @Inject constructor(
         return result
     }
 }
+
+/** Reminders due within this long of the earliest one are rung together as one group. */
+private const val BUNDLE_WINDOW_MILLIS = 5 * 60_000L
+
+/** A RINGING row younger than this belongs to the ring service and is not rescheduled. */
+private const val RINGING_OWNERSHIP_MILLIS = 12 * 60_000L
 
 data class RescheduleResult(
     val registered: Boolean,

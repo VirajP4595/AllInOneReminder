@@ -13,6 +13,7 @@ import app.allinonereminder.health.HealthConnectActivitySource
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -128,7 +129,7 @@ fun SettingsScreen(
                             style = MaterialTheme.typography.bodyMedium,
                             modifier = Modifier.weight(1f)
                         )
-                        IconButton(onClick = onClearMessages, modifier = Modifier.size(24.dp)) {
+                        IconButton(onClick = onClearMessages) {
                             Icon(Icons.Default.Close, contentDescription = "Dismiss", modifier = Modifier.size(16.dp))
                         }
                     }
@@ -152,7 +153,7 @@ fun SettingsScreen(
                             color = MaterialTheme.colorScheme.onErrorContainer,
                             modifier = Modifier.weight(1f)
                         )
-                        IconButton(onClick = onClearMessages, modifier = Modifier.size(24.dp)) {
+                        IconButton(onClick = onClearMessages) {
                             Icon(Icons.Default.Close, contentDescription = "Dismiss", modifier = Modifier.size(16.dp))
                         }
                     }
@@ -224,7 +225,13 @@ fun SettingsScreen(
 
                     // Spoken Alarms Toggle (Opt-in)
                     Row(
-                        modifier = Modifier.fillMaxWidth(),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .toggleable(
+                                value = uiState.speakRemindersEnabled,
+                                role = androidx.compose.ui.semantics.Role.Switch,
+                                onValueChange = onUpdateSpeakReminders
+                            ),
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
@@ -239,7 +246,7 @@ fun SettingsScreen(
                         Spacer(modifier = Modifier.width(12.dp))
                         Switch(
                             checked = uiState.speakRemindersEnabled,
-                            onCheckedChange = onUpdateSpeakReminders
+                            onCheckedChange = null
                         )
                     }
 

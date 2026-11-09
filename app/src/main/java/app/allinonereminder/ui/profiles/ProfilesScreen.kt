@@ -146,7 +146,7 @@ private fun ProfileCard(
                     ) {
                         Text(
                             text = prof.name.take(1).uppercase(),
-                            color = Color.White,
+                            color = app.allinonereminder.ui.components.readableTextColor(Color(prof.colorArgb)),
                             fontWeight = FontWeight.Bold,
                             fontSize = 20.sp
                         )
