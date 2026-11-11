@@ -119,8 +119,14 @@ class AlarmViewModel @Inject constructor(
     private val scheduleRepository: ScheduleRepository,
     private val mealSessionRepository: MealSessionRepository,
     private val alarmCoordinator: AlarmCoordinator,
-    private val refillAlertNotifier: RefillAlertNotifier? = null
+    private val refillAlertNotifier: RefillAlertNotifier? = null,
+    private val settingsRepository: SettingsRepository? = null
 ) : ViewModel() {
+
+    private suspend fun markedBy(id: String) {
+        val name = settingsRepository?.caregiverNameFlow?.first()
+        occurrenceRepository.setMarkedBy(id, name)
+    }
 
     private val _uiState = MutableStateFlow(AlarmUiState())
     val uiState: StateFlow<AlarmUiState> = _uiState.asStateFlow()
@@ -176,6 +182,7 @@ class AlarmViewModel @Inject constructor(
                 // No warning: mark all taken via targeted updates, stop ringing, reschedule, and finish
                 for (occUi in list) {
                     occurrenceRepository.markTakenTargeted(occUi.occurrence.id, now.toEpochMilli())
+                    markedBy(occUi.occurrence.id)
                     AlarmRingService.stopForOccurrence(context, occUi.occurrence.id)
                     refillAlertNotifier?.checkAndNotify(occUi.item.id)
                 }
@@ -207,6 +214,7 @@ class AlarmViewModel @Inject constructor(
 
             // Mark taken via targeted update
             occurrenceRepository.markTakenTargeted(occurrenceId, now.toEpochMilli())
+            markedBy(occurrenceId)
             refillAlertNotifier?.checkAndNotify(occUi.item.id)
             dismissWarningDialog()
             checkCompletion(occurrenceId)
@@ -233,6 +241,7 @@ class AlarmViewModel @Inject constructor(
 
             for (uiModel in _uiState.value.items) {
                 occurrenceRepository.markTakenTargeted(uiModel.occurrence.id, now.toEpochMilli())
+                markedBy(uiModel.occurrence.id)
                 AlarmRingService.stopForOccurrence(context, uiModel.occurrence.id)
                 refillAlertNotifier?.checkAndNotify(uiModel.item.id)
             }
@@ -269,6 +278,7 @@ class AlarmViewModel @Inject constructor(
         viewModelScope.launch {
             val now = Instant.now()
             occurrenceRepository.markSkippedTargeted(occurrenceId, now.toEpochMilli(), reason.name, note)
+            markedBy(occurrenceId)
             dismissSkipDialog()
             checkCompletion(occurrenceId)
         }

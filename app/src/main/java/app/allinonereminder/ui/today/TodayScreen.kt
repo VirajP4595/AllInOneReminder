@@ -675,6 +675,21 @@ private fun SectionHeader(title: String, count: Int) {
     }
 }
 
+/**
+ * "Expired 3 Mar" or "Expires in 12 days" when an expiry date is within 30 days (#87), else null.
+ * The Boolean is true once the date has passed.
+ */
+internal fun expiryWarning(isoDate: String?, today: java.time.LocalDate = java.time.LocalDate.now()): Pair<String, Boolean>? {
+    val date = isoDate?.let { runCatching { java.time.LocalDate.parse(it) }.getOrNull() } ?: return null
+    val days = java.time.temporal.ChronoUnit.DAYS.between(today, date)
+    return when {
+        days < 0 -> "Expired ${date.format(DateTimeFormatter.ofPattern("d MMM"))}" to true
+        days == 0L -> "Expires today" to true
+        days <= 30 -> "Expires in $days day${if (days == 1L) "" else "s"}" to false
+        else -> null
+    }
+}
+
 /** One block of the "Pending today" list: overdue first, then the rest of the day by time. */
 internal data class PendingGroup(val label: String, val overdue: Boolean, val items: List<OccurrenceUiModel>)
 
@@ -863,6 +878,20 @@ private fun OccurrenceTimelineCard(
                     if (uiModel.stockStatus != null) {
                         Text(
                             text = uiModel.stockStatus,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    expiryWarning(item.expiryDate)?.let { (text, expired) ->
+                        Text(
+                            text = text,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = if (expired) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.tertiary
+                        )
+                    }
+                    if (occ.markedBy != null && occ.status in listOf(OccurrenceStatus.TAKEN, OccurrenceStatus.SKIPPED)) {
+                        Text(
+                            text = "Marked by ${occ.markedBy}",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )

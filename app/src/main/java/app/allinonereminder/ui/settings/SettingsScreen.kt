@@ -3,6 +3,8 @@ package app.allinonereminder.ui.settings
 import android.content.ActivityNotFoundException
 import android.content.Intent
 import android.net.Uri
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.health.connect.client.PermissionController
@@ -46,6 +48,8 @@ fun SettingsScreen(
     onNavigateToPermissions: () -> Unit = {},
     onNavigateToProfiles: () -> Unit = {},
     onSetThemeMode: (String) -> Unit = {},
+    onToggleWeekendDay: (Int) -> Unit = {},
+    onSetCaregiverName: (String) -> Unit = {},
     onUpdateSnooze: (Int) -> Unit = {},
     onUpdateRingDuration: (Int) -> Unit = {},
     onUpdateSpeakReminders: (Boolean) -> Unit = {},
@@ -238,6 +242,45 @@ fun SettingsScreen(
                     ),
                     selected = uiState.themeMode,
                     onSelect = onSetThemeMode
+                )
+            }
+
+            SectionCard(title = "Week and household", icon = Icons.Default.CalendarMonth) {
+                Text("Weekend days", fontWeight = FontWeight.SemiBold)
+                Text(
+                    text = "Weekend routine times and weekend shifts use these days.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    listOf("M", "T", "W", "T", "F", "S", "S").forEachIndexed { index, letter ->
+                        val day = index + 1
+                        val dayName = java.time.DayOfWeek.of(day).getDisplayName(java.time.format.TextStyle.FULL, java.util.Locale.getDefault())
+                        ChoiceChip(
+                            selected = day in uiState.weekendDays,
+                            onClick = { onToggleWeekendDay(day) },
+                            label = { Text(letter) },
+                            modifier = Modifier.semantics { contentDescription = dayName }
+                        )
+                    }
+                }
+                Spacer(modifier = Modifier.height(8.dp))
+                var caregiver by remember(uiState.caregiverName) { mutableStateOf(uiState.caregiverName) }
+                AppTextField(
+                    value = caregiver,
+                    onValueChange = {
+                        caregiver = it.take(40)
+                        onSetCaregiverName(caregiver)
+                    },
+                    label = { Text("Your name (optional)") },
+                    placeholder = { Text("e.g. Rahul") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+                Text(
+                    text = "Doses you mark are saved as \"marked by\" you, so the family can see who confirmed them.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
 

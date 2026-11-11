@@ -334,6 +334,7 @@ class TodayViewModel @Inject constructor(
 
             celebrateNextGain = true
             if (occurrenceRepository.markOccurrenceTaken(occ.id, now)) {
+                occurrenceRepository.setMarkedBy(occ.id, settingsRepository.caregiverNameFlow.first())
                 _undo.value = UndoInfo("${item.name} marked taken", occ.id, occ)
             }
             refillAlertNotifier?.checkAndNotify(occ.itemId)
@@ -515,6 +516,7 @@ class TodayViewModel @Inject constructor(
                 uiModel.occurrence.copy(
                     status = OccurrenceStatus.SKIPPED,
                     actedAt = now,
+                    markedBy = settingsRepository.caregiverNameFlow.first(),
                     updatedAt = now
                 )
             )

@@ -209,6 +209,26 @@ fun ItemDetailScreen(
                             )
                             Text(text = instructions, style = MaterialTheme.typography.bodyMedium)
                         }
+
+                        val category = item.category
+                        val expiry = item.expiryDate?.let { runCatching { java.time.LocalDate.parse(it) }.getOrNull() }
+                        if (!category.isNullOrBlank() || expiry != null) {
+                            Spacer(modifier = Modifier.height(10.dp))
+                            HorizontalDivider()
+                            Spacer(modifier = Modifier.height(8.dp))
+                            if (!category.isNullOrBlank()) {
+                                Text("Category: $category", style = MaterialTheme.typography.bodyMedium)
+                            }
+                            if (expiry != null) {
+                                val warning = app.allinonereminder.ui.today.expiryWarning(item.expiryDate)
+                                Text(
+                                    text = "Expires ${expiry.format(java.time.format.DateTimeFormatter.ofPattern("d MMM yyyy"))}" +
+                                        (warning?.let { " · ${it.first}" } ?: ""),
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = if (warning?.second == true) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface
+                                )
+                            }
+                        }
                     }
                 }
             }

@@ -72,6 +72,7 @@ object DataModule {
             .addMigrations(app.allinonereminder.data.local.MIGRATION_2_3)
             .addMigrations(app.allinonereminder.data.local.MIGRATION_3_4)
             .addMigrations(app.allinonereminder.data.local.MIGRATION_4_5)
+            .addMigrations(app.allinonereminder.data.local.MIGRATION_5_6)
         if (factory != null) {
             builder.openHelperFactory(factory)
         }

@@ -40,7 +40,10 @@ data class ScheduleDraft(
     var onceDate: String? = null,
     var validFrom: String? = null,
     var validUntil: String? = null,
-    var doseAmountOverride: String? = null
+    var doseAmountOverride: String? = null,
+    var cycleOnDays: Int? = null,
+    var cycleOffDays: Int? = null,
+    var weekendShiftMinutes: Int? = null
 )
 
 data class ItemEditorUiState(
@@ -68,6 +71,11 @@ data class ItemEditorUiState(
     val unitsPerDose: String = "1.0",
     val refillThreshold: String = "",
     val schedules: List<ScheduleDraft> = listOf(ScheduleDraft()),
+    val expiryDate: String? = null,
+    val category: String = "",
+    val active: Boolean = true,
+    val knownCategories: List<String> = emptyList(),
+    val knownUnits: List<String> = emptyList(),
     val photos: List<ItemPhoto> = emptyList(),
     val isSaving: Boolean = false,
     val saveCompleted: Boolean = false
@@ -93,6 +101,14 @@ class ItemEditorViewModel @Inject constructor(
         viewModelScope.launch {
             val profiles = profileRepository.getActiveProfiles().firstOrNull() ?: emptyList()
             val initialProfileId = profiles.firstOrNull()?.id ?: ""
+
+            // Categories and units already used, offered again as quick choices (#90).
+            runCatching {
+                val all = itemRepository.getAllActiveItemsSync()
+                val categories = all.mapNotNull { it.category?.trim()?.takeIf { c -> c.isNotEmpty() } }.distinct().sorted()
+                val units = all.map { it.dosageUnit.trim() }.filter { it.isNotEmpty() }.distinct().sorted()
+                _uiState.update { it.copy(knownCategories = categories, knownUnits = units) }
+            }
 
             if (!editItemId.isNullOrBlank()) {
                 val item = itemRepository.getItemSync(editItemId)
@@ -130,6 +146,9 @@ class ItemEditorViewModel @Inject constructor(
                             currentStock = currentStockStr,
                             unitsPerDose = unitsStr,
                             refillThreshold = thresholdStr,
+                            expiryDate = item.expiryDate,
+                            category = item.category ?: "",
+                            active = item.active,
                             schedules = scheds.map { s ->
                                 ScheduleDraft(
                                     id = s.id,
@@ -150,7 +169,10 @@ class ItemEditorViewModel @Inject constructor(
                                     onceDate = s.onceDate,
                                     validFrom = s.validFrom,
                                     validUntil = s.validUntil,
-                                    doseAmountOverride = s.doseAmountOverride
+                                    doseAmountOverride = s.doseAmountOverride,
+                                    cycleOnDays = s.cycleOnDays,
+                                    cycleOffDays = s.cycleOffDays,
+                                    weekendShiftMinutes = s.weekendShiftMinutes
                                 )
                             }.ifEmpty { listOf(ScheduleDraft()) },
                             photos = photos
@@ -197,6 +219,8 @@ class ItemEditorViewModel @Inject constructor(
     fun updateTimePolicy(tp: TimePolicy) = _uiState.update { it.copy(timePolicy = tp) }
     fun updateGraceMinutes(m: Int) = _uiState.update { it.copy(graceMinutes = m) }
     fun updateReRingMinutes(m: Int) = _uiState.update { it.copy(reRingMinutes = m) }
+    fun updateExpiryDate(d: String?) = _uiState.update { it.copy(expiryDate = d) }
+    fun updateCategory(c: String) = _uiState.update { it.copy(category = c.take(40)) }
     fun updateMinGapMinutes(m: Int) = _uiState.update { it.copy(minGapMinutes = m) }
     fun updateMaxPerDay(value: String) = _uiState.update {
         it.copy(maxPerDay = value.toIntOrNull()?.takeIf { n -> n > 0 })
@@ -278,6 +302,10 @@ class ItemEditorViewModel @Inject constructor(
                 maxPerDay = state.maxPerDay,
                 unitsPerDose = state.unitsPerDose.toDoubleOrNull() ?: 1.0,
                 refillThreshold = state.refillThreshold.toDoubleOrNull(),
+                expiryDate = state.expiryDate?.takeIf { it.isNotBlank() },
+                category = state.category.trim().ifEmpty { null },
+                // Keep a paused item paused when it is edited.
+                active = state.active,
                 createdAt = now,
                 updatedAt = now
             )
@@ -348,6 +376,13 @@ class ItemEditorViewModel @Inject constructor(
                     validFrom = draft.validFrom?.takeIf { it.isNotBlank() },
                     validUntil = draft.validUntil?.takeIf { it.isNotBlank() },
                     doseAmountOverride = draft.doseAmountOverride?.takeIf { it.isNotBlank() },
+                    cycleOnDays = draft.cycleOnDays?.takeIf { it > 0 && (draft.cycleOffDays ?: 0) > 0 },
+                    cycleOffDays = draft.cycleOffDays?.takeIf { it > 0 && (draft.cycleOnDays ?: 0) > 0 },
+                    weekendShiftMinutes = if (draft.anchorType == ScheduleAnchorType.FIXED) {
+                        draft.weekendShiftMinutes?.takeIf { it != 0 }
+                    } else {
+                        null
+                    },
                     createdAt = now,
                     updatedAt = now
                 )

@@ -463,6 +463,8 @@ class BackupManager @Inject constructor(
                 putOpt("unitsPerDose", item.unitsPerDose)
                 putOpt("refillThreshold", item.refillThreshold)
                 putOpt("appointmentId", item.appointmentId)
+                putOpt("expiryDate", item.expiryDate)
+                putOpt("category", item.category)
                 put("createdAt", item.createdAt)
                 put("updatedAt", item.updatedAt)
                 putOpt("deletedAt", item.deletedAt)
@@ -495,6 +497,8 @@ class BackupManager @Inject constructor(
                     unitsPerDose = if (o.isNull("unitsPerDose")) 1.0 else o.optDouble("unitsPerDose", 1.0),
                     refillThreshold = if (o.isNull("refillThreshold")) null else o.optDouble("refillThreshold"),
                     appointmentId = if (o.isNull("appointmentId")) null else o.getString("appointmentId"),
+                    expiryDate = if (!o.has("expiryDate") || o.isNull("expiryDate")) null else o.getString("expiryDate"),
+                    category = if (!o.has("category") || o.isNull("category")) null else o.getString("category"),
                     createdAt = o.getLong("createdAt"),
                     updatedAt = o.getLong("updatedAt"),
                     deletedAt = if (o.isNull("deletedAt")) null else o.getLong("deletedAt")
@@ -566,6 +570,9 @@ class BackupManager @Inject constructor(
                 putOpt("validFrom", s.validFrom)
                 putOpt("validUntil", s.validUntil)
                 putOpt("doseAmountOverride", s.doseAmountOverride)
+                putOpt("cycleOnDays", s.cycleOnDays)
+                putOpt("cycleOffDays", s.cycleOffDays)
+                putOpt("weekendShiftMinutes", s.weekendShiftMinutes)
                 put("createdAt", s.createdAt)
                 put("updatedAt", s.updatedAt)
                 putOpt("deletedAt", s.deletedAt)
@@ -600,6 +607,9 @@ class BackupManager @Inject constructor(
                     validFrom = if (o.isNull("validFrom")) null else o.getString("validFrom"),
                     validUntil = if (o.isNull("validUntil")) null else o.getString("validUntil"),
                     doseAmountOverride = if (o.isNull("doseAmountOverride")) null else o.getString("doseAmountOverride"),
+                    cycleOnDays = if (!o.has("cycleOnDays") || o.isNull("cycleOnDays")) null else o.getInt("cycleOnDays"),
+                    cycleOffDays = if (!o.has("cycleOffDays") || o.isNull("cycleOffDays")) null else o.getInt("cycleOffDays"),
+                    weekendShiftMinutes = if (!o.has("weekendShiftMinutes") || o.isNull("weekendShiftMinutes")) null else o.getInt("weekendShiftMinutes"),
                     createdAt = o.getLong("createdAt"),
                     updatedAt = o.getLong("updatedAt"),
                     deletedAt = if (o.isNull("deletedAt")) null else o.getLong("deletedAt")
@@ -655,6 +665,7 @@ class BackupManager @Inject constructor(
                 put("ringCount", occ.ringCount)
                 putOpt("actedAt", occ.actedAt)
                 putOpt("skipReason", occ.skipReason)
+                putOpt("markedBy", occ.markedBy)
                 putOpt("note", occ.note)
                 put("deviceId", occ.deviceId)
                 put("updatedAt", occ.updatedAt)
@@ -680,6 +691,7 @@ class BackupManager @Inject constructor(
                     ringCount = o.optInt("ringCount", 0),
                     actedAt = if (o.isNull("actedAt")) null else o.getLong("actedAt"),
                     skipReason = if (o.isNull("skipReason")) null else o.getString("skipReason"),
+                    markedBy = if (!o.has("markedBy") || o.isNull("markedBy")) null else o.getString("markedBy"),
                     note = if (o.isNull("note")) null else o.getString("note"),
                     deviceId = o.getString("deviceId"),
                     updatedAt = o.getLong("updatedAt")

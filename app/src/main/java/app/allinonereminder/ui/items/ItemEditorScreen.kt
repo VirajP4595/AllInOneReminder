@@ -51,6 +51,8 @@ fun ItemEditorScreen(
     onCurrentStockChange: (String) -> Unit = {},
     onUnitsPerDoseChange: (String) -> Unit = {},
     onRefillThresholdChange: (String) -> Unit = {},
+    onExpiryDateChange: (String?) -> Unit = {},
+    onCategoryChange: (String) -> Unit = {},
     onAddSchedule: () -> Unit = {},
     onRemoveSchedule: (String) -> Unit = {},
     onUpdateSchedule: (String, (ScheduleDraft) -> ScheduleDraft) -> Unit = { _, _ -> },
@@ -179,7 +181,8 @@ fun ItemEditorScreen(
                     OptionDropdownField(
                         value = uiState.dosageUnit,
                         onValueChange = onDosageUnitChange,
-                        options = DoseOptions.units(uiState.type),
+                        // Units used before (including custom ones) come back as choices (#90).
+                        options = (DoseOptions.units(uiState.type) + uiState.knownUnits).distinct(),
                         label = "Unit",
                         modifier = Modifier.weight(1.4f)
                     )
@@ -223,6 +226,27 @@ fun ItemEditorScreen(
                 maxLines = 3,
                 modifier = Modifier.fillMaxWidth()
             )
+
+            // Own grouping, e.g. "Heart" or "Vitamins" (#90)
+            AppTextField(
+                value = uiState.category,
+                onValueChange = onCategoryChange,
+                label = { Text("Category (optional)") },
+                placeholder = { Text("e.g. Heart, Vitamins") },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth()
+            )
+            if (uiState.knownCategories.isNotEmpty()) {
+                LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    items(uiState.knownCategories) { c ->
+                        ChoiceChip(
+                            selected = uiState.category.equals(c, ignoreCase = true),
+                            onClick = { onCategoryChange(c) },
+                            label = { Text(c) }
+                        )
+                    }
+                }
+            }
             }
 
             // Stock & Refill Tracking
@@ -259,6 +283,13 @@ fun ItemEditorScreen(
                         singleLine = true
                     )
                 }
+                // Expiry date: Today and the item page warn 30 days before (#87)
+                app.allinonereminder.ui.components.DateChip(
+                    label = "Expiry date",
+                    isoDate = uiState.expiryDate,
+                    onChange = onExpiryDateChange,
+                    modifier = Modifier.fillMaxWidth()
+                )
             }
 
             // Criticality
@@ -680,6 +711,50 @@ private fun ScheduleDraftCard(
                     )
                 }
                 else -> Unit
+            }
+
+            if (draft.recurrence == RecurrenceType.DAILY) {
+                // On/off cycle, e.g. 21 days on, 7 days off, counted from the item's start date (#86)
+                var cycleOn by remember(draft.id) { mutableStateOf(draft.cycleOnDays?.toString() ?: "") }
+                var cycleOff by remember(draft.id) { mutableStateOf(draft.cycleOffDays?.toString() ?: "") }
+                Text("On/off cycle (optional)", style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.SemiBold)
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                    AppTextField(
+                        value = cycleOn,
+                        onValueChange = { v ->
+                            cycleOn = v.filter { it.isDigit() }.take(3)
+                            onUpdate { it.copy(cycleOnDays = cycleOn.toIntOrNull()) }
+                        },
+                        label = { Text("Days on") },
+                        singleLine = true,
+                        keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Number),
+                        modifier = Modifier.weight(1f)
+                    )
+                    AppTextField(
+                        value = cycleOff,
+                        onValueChange = { v ->
+                            cycleOff = v.filter { it.isDigit() }.take(3)
+                            onUpdate { it.copy(cycleOffDays = cycleOff.toIntOrNull()) }
+                        },
+                        label = { Text("Days off") },
+                        singleLine = true,
+                        keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Number),
+                        modifier = Modifier.weight(1f)
+                    )
+                }
+            }
+            if (draft.anchorType == ScheduleAnchorType.FIXED && draft.recurrence != RecurrenceType.INTERVAL) {
+                // Weekend shift: e.g. an hour later on weekends (#86)
+                Text("On weekends", style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.SemiBold)
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    listOf(0 to "Same time", 30 to "+30 min", 60 to "+1 h", 120 to "+2 h").forEach { (shift, label) ->
+                        ChoiceChip(
+                            selected = (draft.weekendShiftMinutes ?: 0) == shift,
+                            onClick = { onUpdate { it.copy(weekendShiftMinutes = shift) } },
+                            label = { Text(label) }
+                        )
+                    }
+                }
             }
 
             Text("Only between dates (optional)", style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.SemiBold)

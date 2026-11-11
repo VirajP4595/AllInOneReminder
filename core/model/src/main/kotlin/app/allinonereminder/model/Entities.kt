@@ -44,6 +44,8 @@ data class Item(
     val unitsPerDose: Double? = 1.0,
     val refillThreshold: Double? = null,
     val appointmentId: String? = null,
+    val expiryDate: String? = null, // YYYY-MM-DD, medicine expiry
+    val category: String? = null, // user's own grouping, e.g. "Heart", "Vitamins"
     val active: Boolean = true,
     val createdAt: Long,
     val updatedAt: Long,
@@ -85,6 +87,9 @@ data class Schedule(
     val validFrom: String? = null, // YYYY-MM-DD, inclusive
     val validUntil: String? = null, // YYYY-MM-DD, inclusive
     val doseAmountOverride: String? = null, // taper step dose
+    val cycleOnDays: Int? = null, // on/off cycle: N days on ...
+    val cycleOffDays: Int? = null, // ... then M days off, counted from anchorDate
+    val weekendShiftMinutes: Int? = null, // FIXED times move by this much on weekend days
     val createdAt: Long,
     val updatedAt: Long,
     val deletedAt: Long? = null
@@ -110,6 +115,7 @@ data class Occurrence(
     val actedAt: Long? = null,
     val skipReason: String? = null,
     val note: String? = null,
+    val markedBy: String? = null, // who tapped Taken/Skip on a shared phone
     val deviceId: String,
     val updatedAt: Long
 )

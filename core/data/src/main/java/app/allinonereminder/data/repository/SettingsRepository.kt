@@ -56,6 +56,8 @@ class SettingsRepository(
         val KEY_DEVICE_ID = stringPreferencesKey("device_id")
         val KEY_LAST_RESCHEDULE_ERROR = stringPreferencesKey("last_reschedule_error")
         val KEY_THEME_MODE = stringPreferencesKey("theme_mode")
+        val KEY_WEEKEND_DAYS = stringPreferencesKey("weekend_days")
+        val KEY_CAREGIVER_NAME = stringPreferencesKey("caregiver_name")
         val KEY_NEXT_ALARM_AT = androidx.datastore.preferences.core.longPreferencesKey("next_alarm_at")
 
         /** Stored sound value meaning "use the phone's default sound". Older installs stored names like "alarm". */
@@ -71,6 +73,26 @@ class SettingsRepository(
     suspend fun setNextAlarmAt(epochMillis: Long?) {
         dataStore.edit { prefs ->
             if (epochMillis == null) prefs.remove(KEY_NEXT_ALARM_AT) else prefs[KEY_NEXT_ALARM_AT] = epochMillis
+        }
+    }
+
+    /** Days counted as the weekend, as ISO day numbers (1 = Monday ... 7 = Sunday). Default Sat + Sun. */
+    val weekendDaysFlow: Flow<Set<Int>> = dataStore.data.map { prefs ->
+        prefs[KEY_WEEKEND_DAYS]?.split(',')?.mapNotNull { it.trim().toIntOrNull() }?.filter { it in 1..7 }?.toSet()
+            ?.takeIf { it.isNotEmpty() } ?: setOf(6, 7)
+    }
+
+    suspend fun setWeekendDays(days: Set<Int>) {
+        dataStore.edit { it[KEY_WEEKEND_DAYS] = days.filter { d -> d in 1..7 }.sorted().joinToString(",") }
+    }
+
+    /** Name of whoever usually marks doses on this shared phone; saved with each Taken/Skip (#80). */
+    val caregiverNameFlow: Flow<String?> = dataStore.data.map { it[KEY_CAREGIVER_NAME]?.takeIf { n -> n.isNotBlank() } }
+
+    suspend fun setCaregiverName(name: String) {
+        dataStore.edit { prefs ->
+            val trimmed = name.trim().take(40)
+            if (trimmed.isEmpty()) prefs.remove(KEY_CAREGIVER_NAME) else prefs[KEY_CAREGIVER_NAME] = trimmed
         }
     }
 
