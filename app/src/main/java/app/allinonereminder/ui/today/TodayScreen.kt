@@ -687,7 +687,7 @@ private fun OccurrenceTimelineCard(
     val occ = uiModel.occurrence
     val item = uiModel.item
     val dueTime = Instant.ofEpochMilli(occ.dueAt).atZone(ZoneId.systemDefault())
-    val formattedTime = dueTime.format(DateTimeFormatter.ofPattern("hh:mm a"))
+    val formattedTime = dueTime.format(DateTimeFormatter.ofPattern("h:mm a"))
 
     Card(
         modifier = Modifier
@@ -698,41 +698,36 @@ private fun OccurrenceTimelineCard(
         elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    app.allinonereminder.ui.components.TypeBadge(item.type, size = 40.dp)
-                    Spacer(modifier = Modifier.width(12.dp))
-                    Text(
-                        text = formattedTime,
-                        style = MaterialTheme.typography.titleLarge
-                    )
-                }
-
-                if (occ.status != OccurrenceStatus.PENDING) StatusChip(status = occ.status)
-            }
-
-            Spacer(modifier = Modifier.height(8.dp))
-
+            // Name first, then time and dose on one line: easier to scan than a big time.
             Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                app.allinonereminder.ui.components.TypeBadge(item.type, size = 44.dp)
+                Spacer(modifier = Modifier.width(12.dp))
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
                         text = item.name,
-                        style = MaterialTheme.typography.titleMedium
+                        style = MaterialTheme.typography.titleMedium,
+                        maxLines = 2,
+                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
                     )
                     val doseText = if (item.type == ItemType.APPOINTMENT) {
                         effectiveDoseAmount(uiModel.schedule, item)
                     } else {
                         doseLabel(uiModel.schedule, item)
                     }
-                    Text(
-                        text = doseText,
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            Icons.Default.Schedule,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(14.dp)
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(
+                            text = listOf(formattedTime, doseText).filter { it.isNotBlank() }.joinToString("  ·  "),
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
                     if (uiModel.stockStatus != null) {
                         Text(
                             text = uiModel.stockStatus,
@@ -740,9 +735,8 @@ private fun OccurrenceTimelineCard(
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
-
                     if (showProfileBadge && uiModel.profile != null) {
-                        Spacer(modifier = Modifier.height(4.dp))
+                        Spacer(modifier = Modifier.height(2.dp))
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Box(
                                 modifier = Modifier
@@ -753,11 +747,15 @@ private fun OccurrenceTimelineCard(
                             Spacer(modifier = Modifier.width(4.dp))
                             Text(
                                 text = uiModel.profile.name,
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.primary
+                                style = MaterialTheme.typography.labelMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         }
                     }
+                }
+                if (occ.status != OccurrenceStatus.PENDING) {
+                    Spacer(modifier = Modifier.width(8.dp))
+                    StatusChip(status = occ.status)
                 }
             }
 
@@ -782,7 +780,7 @@ private fun OccurrenceTimelineCard(
                             .weight(1f)
                             .defaultMinSize(minHeight = 44.dp)
                     ) {
-                        Text("10m")
+                        Text("Snooze", maxLines = 1, softWrap = false)
                     }
                     TextButton(
                         onClick = onSkip,

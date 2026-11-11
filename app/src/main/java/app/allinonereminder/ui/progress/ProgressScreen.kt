@@ -414,7 +414,7 @@ private data class BadgeInfo(
 private fun Badge.info(): BadgeInfo = when (this) {
     Badge.STREAK_7 -> BadgeInfo("One week", "7 days in a row", Icons.Default.LocalFireDepartment, Color(0xFFF4511E))
     Badge.STREAK_30 -> BadgeInfo("One month", "30 days in a row", Icons.Default.Whatshot, Color(0xFFE53935))
-    Badge.STREAK_100 -> BadgeInfo("Hundred", "100 days in a row", Icons.Default.MilitaryTech, Color(0xFF8E24AA))
+    Badge.STREAK_100 -> BadgeInfo("Hundred", "100 days running", Icons.Default.MilitaryTech, Color(0xFF8E24AA))
     Badge.HYDRATION_HERO -> BadgeInfo("Hydration hero", "All water on time, 7 days", Icons.Default.WaterDrop, Color(0xFF1E88E5))
     Badge.PERFECT_WEEK -> BadgeInfo("Perfect week", "Everything on time, 7 days", Icons.Default.Verified, Color(0xFF00897B))
     Badge.STEPS_10K -> BadgeInfo("10k steps", "10,000 steps in a day", Icons.Default.DirectionsWalk, Color(0xFF43A047))
@@ -435,9 +435,20 @@ fun BadgesSection(earnedBadges: List<BadgeAward>) {
         }
     ) {
         Badge.entries.chunked(3).forEach { row ->
-            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(IntrinsicSize.Min),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
                 row.forEach { badge ->
-                    BadgeTile(badge = badge, unlocked = badge in earned, modifier = Modifier.weight(1f))
+                    BadgeTile(
+                        badge = badge,
+                        unlocked = badge in earned,
+                        modifier = Modifier
+                            .weight(1f)
+                            .fillMaxHeight()
+                    )
                 }
                 repeat(3 - row.size) { Spacer(modifier = Modifier.weight(1f)) }
             }
