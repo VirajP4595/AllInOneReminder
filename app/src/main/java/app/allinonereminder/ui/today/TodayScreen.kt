@@ -241,6 +241,16 @@ fun TodayScreen(
                 }
             }
 
+            if (uiState.missedYesterday.isNotEmpty()) {
+                item {
+                    MissedYesterdayStrip(
+                        missed = uiState.missedYesterday,
+                        showProfile = uiState.selectedProfileId == null,
+                        onClick = onOccurrenceClick
+                    )
+                }
+            }
+
             if (upNext.isNotEmpty()) {
                 item { SectionHeader(title = "Pending today", count = upNext.size) }
                 pendingGroups.forEach { group ->
@@ -687,6 +697,50 @@ internal fun expiryWarning(isoDate: String?, today: java.time.LocalDate = java.t
         days == 0L -> "Expires today" to true
         days <= 30 -> "Expires in $days day${if (days == 1L) "" else "s"}" to false
         else -> null
+    }
+}
+
+/** Yesterday's missed doses, so a caregiver sees them without opening History (#78). */
+@Composable
+private fun MissedYesterdayStrip(
+    missed: List<OccurrenceUiModel>,
+    showProfile: Boolean,
+    onClick: (OccurrenceUiModel) -> Unit
+) {
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer)
+    ) {
+        Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Default.History, contentDescription = null, tint = MaterialTheme.colorScheme.onErrorContainer)
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    "Missed yesterday · ${missed.size}",
+                    style = MaterialTheme.typography.titleSmall,
+                    color = MaterialTheme.colorScheme.onErrorContainer
+                )
+            }
+            missed.take(5).forEach { m ->
+                val time = Instant.ofEpochMilli(m.occurrence.dueAt).atZone(ZoneId.systemDefault())
+                    .format(app.allinonereminder.ui.components.AppTime.formatter())
+                val who = if (showProfile && m.profile != null) " · ${m.profile.name}" else ""
+                Text(
+                    text = "${m.item.name}, $time$who",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onErrorContainer,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { onClick(m) }
+                        .padding(vertical = 4.dp)
+                )
+            }
+            if (missed.size > 5) {
+                Text("and ${missed.size - 5} more in History", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onErrorContainer)
+            }
+        }
     }
 }
 

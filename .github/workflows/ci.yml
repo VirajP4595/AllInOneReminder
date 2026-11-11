@@ -47,6 +47,15 @@ jobs:
           KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
 
+      # A new DB version needs its Room schema file committed. If the build generated one that is not
+      # in git yet, print it so it can be copied into the repo.
+      - name: Show uncommitted Room schema
+        if: always()
+        run: |
+          for f in $(git ls-files --others --exclude-standard core/data/schemas); do
+            echo "::group::NEW SCHEMA $f"; echo "BEGIN_SCHEMA_FILE $f"; cat "$f"; echo; echo "END_SCHEMA_FILE"; echo "::endgroup::"
+          done
+
       # Room writes the schema of each new DB version here; it must be committed with the migration.
       - name: Upload Room schemas
         if: always()

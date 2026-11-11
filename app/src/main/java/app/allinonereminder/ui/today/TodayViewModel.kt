@@ -88,6 +88,7 @@ data class TodayUiState(
     val progress: TodayProgress? = null,
     val rewardMessage: String? = null,
     val undo: UndoInfo? = null,
+    val missedYesterday: List<OccurrenceUiModel> = emptyList(),
     val isLoading: Boolean = true
 )
 
@@ -111,6 +112,17 @@ class TodayViewModel @Inject constructor(
     private val _progress = MutableStateFlow<TodayProgress?>(null)
     private val _reward = MutableStateFlow<String?>(null)
     private val _undo = MutableStateFlow<UndoInfo?>(null)
+
+    /** Yesterday's doses that ended up missed, shown as a strip on Today so they aren't only in History (#78). */
+    private val missedYesterdayFlow: Flow<List<Occurrence>> = flow {
+        val zone = ZoneId.systemDefault()
+        val today = LocalDate.now(zone)
+        emit(
+            today.minusDays(1).atStartOfDay(zone).toInstant().toEpochMilli() to
+                today.atStartOfDay(zone).toInstant().toEpochMilli()
+        )
+    }.flatMapLatest { (start, end) -> occurrenceRepository.getOccurrencesBetween(start, end) }
+        .map { list -> list.filter { it.status == OccurrenceStatus.MISSED } }
 
     /** Set when the user logs a dose here, so the next points increase is celebrated once. */
     @Volatile private var celebrateNextGain = false
@@ -195,7 +207,8 @@ class TodayViewModel @Inject constructor(
         stockEventRepository?.getAllCurrentStocksFlow() ?: flowOf(emptyMap<String, Double>()),
         _progress,
         _reward,
-        _undo
+        _undo,
+        missedYesterdayFlow
     ) { args ->
         @Suppress("UNCHECKED_CAST")
         val profiles = args[0] as List<Profile>
@@ -216,6 +229,8 @@ class TodayViewModel @Inject constructor(
         val progress = args[11] as TodayProgress?
         val reward = args[12] as String?
         val undo = args[13] as UndoInfo?
+        @Suppress("UNCHECKED_CAST")
+        val missedYesterdayOccs = args[14] as List<Occurrence>
         val itemMap = allItems.associateBy { it.id }
         val profileMap = profiles.associateBy { it.id }
         val scheduleMap = allSchedules.associateBy { it.id }
@@ -294,6 +309,12 @@ class TodayViewModel @Inject constructor(
             progress = progress,
             rewardMessage = reward,
             undo = undo,
+            missedYesterday = missedYesterdayOccs
+                .filter { selectedProfileId == null || it.profileId == selectedProfileId }
+                .mapNotNull { occ ->
+                    val item = itemMap[occ.itemId] ?: return@mapNotNull null
+                    OccurrenceUiModel(occ, item, profileMap[occ.profileId], scheduleMap[occ.scheduleId])
+                },
             isLoading = false
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), TodayUiState())

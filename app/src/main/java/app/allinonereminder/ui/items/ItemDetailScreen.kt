@@ -44,6 +44,8 @@ fun ItemDetailScreen(
     onRefillClick: (Double) -> Unit = {},
     onAdjustClick: (Double) -> Unit = {},
     onSetPaused: (Boolean) -> Unit = {},
+    onCopyTo: (String) -> Unit = {},
+    onMessageShown: () -> Unit = {},
     onNavigateBack: () -> Unit = {}
 ) {
     val context = LocalContext.current
@@ -51,6 +53,14 @@ fun ItemDetailScreen(
     var showDeleteConfirm by remember { mutableStateOf(false) }
     var showRefillDialog by remember { mutableStateOf(false) }
     var showAdjustDialog by remember { mutableStateOf(false) }
+    var showMenu by remember { mutableStateOf(false) }
+    var showCopyDialog by remember { mutableStateOf(false) }
+    val snackbarHostState = remember { SnackbarHostState() }
+    LaunchedEffect(uiState.message) {
+        val msg = uiState.message ?: return@LaunchedEffect
+        snackbarHostState.showSnackbar(msg)
+        onMessageShown()
+    }
 
     LaunchedEffect(uiState.itemDeleted) {
         if (uiState.itemDeleted) {
@@ -61,6 +71,7 @@ fun ItemDetailScreen(
     val item = uiState.item
 
     Scaffold(
+        snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
             TopAppBar(
                 title = { Text(item?.name ?: "Item Detail") },
@@ -76,6 +87,31 @@ fun ItemDetailScreen(
                         }
                         IconButton(onClick = { showDeleteConfirm = true }) {
                             Icon(Icons.Default.Delete, contentDescription = "Delete Item", tint = MaterialTheme.colorScheme.error)
+                        }
+                        Box {
+                            IconButton(onClick = { showMenu = true }) {
+                                Icon(Icons.Default.MoreVert, contentDescription = "More actions")
+                            }
+                            DropdownMenu(expanded = showMenu, onDismissRequest = { showMenu = false }) {
+                                DropdownMenuItem(
+                                    text = { Text("Duplicate") },
+                                    leadingIcon = { Icon(Icons.Default.ContentCopy, contentDescription = null) },
+                                    onClick = {
+                                        showMenu = false
+                                        onCopyTo(item.profileId)
+                                    }
+                                )
+                                if (uiState.allProfiles.size > 1) {
+                                    DropdownMenuItem(
+                                        text = { Text("Copy to another person") },
+                                        leadingIcon = { Icon(Icons.Default.PersonAdd, contentDescription = null) },
+                                        onClick = {
+                                            showMenu = false
+                                            showCopyDialog = true
+                                        }
+                                    )
+                                }
+                            }
                         }
                     }
                 }
@@ -413,6 +449,30 @@ fun ItemDetailScreen(
                 }
             }
         }
+    }
+
+    if (showCopyDialog && item != null) {
+        AlertDialog(
+            onDismissRequest = { showCopyDialog = false },
+            title = { Text("Copy ${item.name} to") },
+            text = {
+                Column {
+                    uiState.allProfiles.filter { it.id != item.profileId }.forEach { p ->
+                        TextButton(
+                            onClick = {
+                                showCopyDialog = false
+                                onCopyTo(p.id)
+                            },
+                            modifier = Modifier.fillMaxWidth().defaultMinSize(minHeight = 48.dp)
+                        ) {
+                            Text(p.name, modifier = Modifier.fillMaxWidth())
+                        }
+                    }
+                }
+            },
+            confirmButton = {},
+            dismissButton = { TextButton(onClick = { showCopyDialog = false }) { Text("Cancel") } }
+        )
     }
 
     // Delete confirmation dialog

@@ -52,6 +52,7 @@ fun ItemEditorScreen(
     onUnitsPerDoseChange: (String) -> Unit = {},
     onRefillThresholdChange: (String) -> Unit = {},
     onExpiryDateChange: (String?) -> Unit = {},
+    onApplyTemplate: (QuickTemplate) -> Unit = {},
     onCategoryChange: (String) -> Unit = {},
     onAddSchedule: () -> Unit = {},
     onRemoveSchedule: (String) -> Unit = {},
@@ -105,6 +106,21 @@ fun ItemEditorScreen(
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
+            if (!uiState.isEditMode) {
+                SectionCard(title = "Quick start", icon = Icons.Default.Bolt) {
+                    Text(
+                        "Pick one to fill in the times. You can change anything after.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        items(QuickTemplate.entries) { t ->
+                            AssistChip(onClick = { onApplyTemplate(t) }, label = { Text(t.label) })
+                        }
+                    }
+                }
+            }
+
             SectionCard(title = "Basics", icon = Icons.Default.Info) {
             // Profile selector
             Text("Who is it for?", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)

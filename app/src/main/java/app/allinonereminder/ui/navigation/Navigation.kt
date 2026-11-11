@@ -249,7 +249,10 @@ fun MainAppNavigation(
                     onProfileSelected = viewModel::selectProfile,
                     onTypeFilterSelected = viewModel::selectTypeFilter,
                     onAddItemClick = { navController.navigate(Screen.ItemAdd.route) },
-                    onItemClick = { item -> navController.navigate("item/detail/${item.id}") }
+                    onItemClick = { item -> navController.navigate("item/detail/${item.id}") },
+                    onQueryChange = viewModel::setQuery,
+                    onSortChange = viewModel::setSort,
+                    onCategorySelected = viewModel::selectCategory
                 )
             }
 
@@ -272,6 +275,7 @@ fun MainAppNavigation(
                     onGraceMinutesChange = viewModel::updateGraceMinutes,
                     onReRingMinutesChange = viewModel::updateReRingMinutes,
                     onExpiryDateChange = viewModel::updateExpiryDate,
+                    onApplyTemplate = viewModel::applyTemplate,
                     onCategoryChange = viewModel::updateCategory,
                     onMinGapMinutesChange = viewModel::updateMinGapMinutes,
                     onMaxPerDayChange = viewModel::updateMaxPerDay,
@@ -310,6 +314,7 @@ fun MainAppNavigation(
                     onGraceMinutesChange = viewModel::updateGraceMinutes,
                     onReRingMinutesChange = viewModel::updateReRingMinutes,
                     onExpiryDateChange = viewModel::updateExpiryDate,
+                    onApplyTemplate = viewModel::applyTemplate,
                     onCategoryChange = viewModel::updateCategory,
                     onMinGapMinutesChange = viewModel::updateMinGapMinutes,
                     onMaxPerDayChange = viewModel::updateMaxPerDay,
@@ -340,6 +345,8 @@ fun MainAppNavigation(
                     onRefillClick = viewModel::addRefill,
                     onAdjustClick = viewModel::adjustStock,
                     onSetPaused = viewModel::setPaused,
+                    onCopyTo = viewModel::copyTo,
+                    onMessageShown = viewModel::consumeMessage,
                     onNavigateBack = { navController.popBackStack() }
                 )
             }

@@ -33,7 +33,9 @@ data class ItemDetailUiState(
     val hasStockTracking: Boolean = false,
     val isLowStock: Boolean = false,
     val isLoading: Boolean = true,
-    val itemDeleted: Boolean = false
+    val itemDeleted: Boolean = false,
+    val allProfiles: List<Profile> = emptyList(),
+    val message: String? = null
 )
 
 @HiltViewModel
@@ -71,6 +73,8 @@ class ItemDetailViewModel @Inject constructor(
         viewModelScope.launch {
             val item = itemRepository.getItemSync(itemId) ?: return@launch
             val profile = profileRepository.getProfileSync(item.profileId)
+            val allProfiles = profileRepository.getActiveProfiles().firstOrNull() ?: emptyList()
+            _uiState.update { it.copy(allProfiles = allProfiles) }
             val schedules = scheduleRepository.getActiveSchedules(itemId).firstOrNull() ?: emptyList()
             val photos = itemRepository.getPhotosSync(itemId)
             val summary = ItemsViewModel.formatSchedulesSummary(schedules, item)
@@ -141,6 +145,43 @@ class ItemDetailViewModel @Inject constructor(
             loadItemDetails()
         }
     }
+
+    /**
+     * Copies this item and its schedules to [targetProfileId] (#76). Copying to the same person makes
+     * a duplicate named "(copy)". Stock, photos and history are not copied.
+     */
+    fun copyTo(targetProfileId: String) {
+        viewModelScope.launch {
+            val item = itemRepository.getItemSync(itemId) ?: return@launch
+            val schedules = scheduleRepository.getActiveSchedulesSync(itemId)
+            val deviceId = settingsRepository.getOrCreateDeviceId()
+            val now = System.currentTimeMillis()
+            val sameProfile = targetProfileId == item.profileId
+            val newId = java.util.UUID.randomUUID().toString()
+            itemRepository.createItem(
+                item.copy(
+                    id = newId,
+                    profileId = targetProfileId,
+                    name = if (sameProfile) "${item.name} (copy)" else item.name,
+                    appointmentId = null,
+                    createdAt = now,
+                    updatedAt = now
+                ),
+                deviceId
+            )
+            schedules.forEach { s ->
+                scheduleRepository.createSchedule(
+                    s.copy(id = java.util.UUID.randomUUID().toString(), itemId = newId, createdAt = now, updatedAt = now),
+                    deviceId
+                )
+            }
+            alarmCoordinator.reschedule("item_copied")
+            val who = profileRepository.getProfileSync(targetProfileId)?.name ?: "this person"
+            _uiState.update { it.copy(message = if (sameProfile) "Duplicated ${item.name}" else "Copied ${item.name} to $who") }
+        }
+    }
+
+    fun consumeMessage() = _uiState.update { it.copy(message = null) }
 
     fun deleteItem() {
         viewModelScope.launch {

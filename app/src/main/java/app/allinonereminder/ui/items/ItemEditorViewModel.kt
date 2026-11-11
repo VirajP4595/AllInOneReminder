@@ -226,6 +226,19 @@ class ItemEditorViewModel @Inject constructor(
         it.copy(maxPerDay = value.toIntOrNull()?.takeIf { n -> n > 0 })
     }
 
+    /** Fills type, dose and schedules from a quick-start template (#77); the user can still edit all of it. */
+    fun applyTemplate(template: QuickTemplate) {
+        updateType(template.type)
+        _uiState.update { s ->
+            s.copy(
+                dosageAmount = template.dosageAmount ?: s.dosageAmount,
+                dosageUnit = template.dosageUnit ?: s.dosageUnit,
+                name = if (s.name.isBlank() && template.defaultName != null) template.defaultName else s.name,
+                schedules = template.schedules()
+            )
+        }
+    }
+
     fun addSchedule() {
         _uiState.update { it.copy(schedules = it.schedules + ScheduleDraft()) }
     }
