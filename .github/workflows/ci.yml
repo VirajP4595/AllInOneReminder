@@ -63,10 +63,15 @@ jobs:
           path: app/build/outputs/apk/release/*.apk
           if-no-files-found: ignore
 
+  # Publishes a GitHub Release with the signed APK. Two ways in:
+  #  - automatically, when a push to main carries a versionName that has no v<version> tag yet
+  #    (bump versionCode/versionName in app/build.gradle.kts in the PR, merge, done);
+  #  - manually, by pushing or creating a v* tag (the old way, still works).
+  # It reuses the signed APK the build job just made, so nothing is built twice.
   release:
     name: GitHub Release
     needs: build
-    if: startsWith(github.ref, 'refs/tags/v')
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -75,30 +80,51 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Set up JDK 21
-        uses: actions/setup-java@v4
-        with:
-          distribution: 'temurin'
-          java-version: '21'
-
-      - name: Setup Gradle
-        uses: gradle/actions/setup-gradle@v4
-
-      - name: Grant execute permission for gradlew
-        run: chmod +x gradlew
-
-      - name: Build Release APK
-        run: ./gradlew assembleRelease --stacktrace
+      - name: Work out the version and whether to release
+        id: version
         env:
-          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
-          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
-          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
-          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          version=$(sed -n 's/^ *versionName = "\(.*\)".*/\1/p' app/build.gradle.kts | head -1)
+          if [ -z "$version" ]; then echo "versionName not found"; exit 1; fi
+          tag="v$version"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          if [ "${GITHUB_REF}" = "refs/tags/$tag" ]; then
+            echo "release=true" >> "$GITHUB_OUTPUT"
+          elif [ "${GITHUB_REF_TYPE}" = "tag" ]; then
+            echo "Tag ${GITHUB_REF_NAME} does not match versionName $version; not releasing."
+            echo "release=false" >> "$GITHUB_OUTPUT"
+          elif gh api "repos/${GITHUB_REPOSITORY}/git/ref/tags/$tag" >/dev/null 2>&1; then
+            echo "$tag already exists; nothing to release. Bump versionName to publish a new one."
+            echo "release=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "New version $version on main; releasing $tag."
+            echo "release=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Get the signed APK from the build job
+        if: steps.version.outputs.release == 'true'
+        uses: actions/download-artifact@v4
+        with:
+          name: app-release-apk
+          path: release-apk
+
+      - name: Check the APK is there
+        if: steps.version.outputs.release == 'true'
+        run: |
+          ls -l release-apk
+          test -f "release-apk/app-${{ steps.version.outputs.version }}.apk" || { echo "Signed APK app-${{ steps.version.outputs.version }}.apk missing (are the signing secrets set?)"; exit 1; }
 
       - name: Publish GitHub Release
+        if: steps.version.outputs.release == 'true'
         uses: softprops/action-gh-release@v2
         with:
-          files: app/build/outputs/apk/release/*.apk
+          tag_name: ${{ steps.version.outputs.tag }}
+          name: ${{ steps.version.outputs.tag }}
+          target_commitish: ${{ github.sha }}
+          files: release-apk/app-${{ steps.version.outputs.version }}.apk
           generate_release_notes: true
+          make_latest: true
           draft: false
           prerelease: false

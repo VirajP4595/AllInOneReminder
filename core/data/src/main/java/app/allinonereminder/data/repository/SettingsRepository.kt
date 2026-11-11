@@ -13,6 +13,18 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import java.util.UUID
 
+/** App appearance: follow the phone, or always light / always dark. Stored as these strings. */
+object ThemeMode {
+    const val SYSTEM = "system"
+    const val LIGHT = "light"
+    const val DARK = "dark"
+
+    fun normalize(value: String?): String = when (value) {
+        LIGHT, DARK -> value
+        else -> SYSTEM
+    }
+}
+
 val Context.dataStore: DataStore<Preferences> by preferencesDataStore(name = "user_settings")
 
 data class UserSettings(
@@ -43,6 +55,14 @@ class SettingsRepository(
         val KEY_ONBOARDING_DONE = booleanPreferencesKey("onboarding_completed")
         val KEY_DEVICE_ID = stringPreferencesKey("device_id")
         val KEY_LAST_RESCHEDULE_ERROR = stringPreferencesKey("last_reschedule_error")
+        val KEY_THEME_MODE = stringPreferencesKey("theme_mode")
+    }
+
+    /** One of [ThemeMode]; defaults to following the phone. */
+    val themeModeFlow: Flow<String> = dataStore.data.map { ThemeMode.normalize(it[KEY_THEME_MODE]) }
+
+    suspend fun setThemeMode(mode: String) {
+        dataStore.edit { it[KEY_THEME_MODE] = ThemeMode.normalize(mode) }
     }
 
     val lastRescheduleErrorFlow: Flow<String?> = dataStore.data.map { it[KEY_LAST_RESCHEDULE_ERROR] }

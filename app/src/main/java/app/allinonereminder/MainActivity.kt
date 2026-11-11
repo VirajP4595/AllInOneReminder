@@ -35,7 +35,11 @@ import app.allinonereminder.data.repository.ProfileRepository
 import app.allinonereminder.data.repository.SettingsRepository
 import app.allinonereminder.data.security.DatabaseKeyManager
 import app.allinonereminder.ui.navigation.MainAppNavigation
-import app.allinonereminder.ui.theme.AllInOneReminderTheme
+import app.allinonereminder.ui.theme.AppTheme
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.runBlocking
 import dagger.hilt.android.AndroidEntryPoint
 import javax.inject.Inject
 
@@ -66,8 +70,13 @@ class MainActivity : ComponentActivity() {
         val keyManager = DatabaseKeyManager(this)
         val isKeyAccessible = keyManager.canAccessPassphrase()
 
+        // Read the appearance setting once before the first frame so a "Dark" choice doesn't
+        // flash light on start (a single small DataStore read).
+        val initialThemeMode = runBlocking { settingsRepository.themeModeFlow.first() }
+
         setContent {
-            AllInOneReminderTheme {
+            val themeMode by settingsRepository.themeModeFlow.collectAsState(initial = initialThemeMode)
+            AppTheme(themeMode = themeMode) {
                 Surface(
                     modifier = Modifier.fillMaxSize(),
                     color = MaterialTheme.colorScheme.background

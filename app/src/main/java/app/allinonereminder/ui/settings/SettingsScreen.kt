@@ -32,6 +32,7 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import app.allinonereminder.backup.BackupPreview
+import app.allinonereminder.data.repository.ThemeMode
 import app.allinonereminder.ui.components.*
 import app.allinonereminder.ui.theme.AllInOneReminderTheme
 import java.time.Instant
@@ -44,6 +45,7 @@ fun SettingsScreen(
     uiState: SettingsUiState,
     onNavigateToPermissions: () -> Unit = {},
     onNavigateToProfiles: () -> Unit = {},
+    onSetThemeMode: (String) -> Unit = {},
     onUpdateSnooze: (Int) -> Unit = {},
     onUpdateRingDuration: (Int) -> Unit = {},
     onUpdateSpeakReminders: (Boolean) -> Unit = {},
@@ -173,6 +175,28 @@ fun SettingsScreen(
                 subtitle = "Verify alarms, notifications and battery settings",
                 onClick = onNavigateToPermissions
             )
+
+            SectionCard(title = "Appearance", icon = Icons.Default.DarkMode) {
+                Text(
+                    text = "Theme",
+                    fontWeight = FontWeight.SemiBold
+                )
+                Text(
+                    text = "Dark mode is easier on the eyes at night. \"Phone\" follows your phone's setting.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                SegmentedChoice(
+                    options = listOf(
+                        ThemeMode.SYSTEM to "Phone",
+                        ThemeMode.LIGHT to "Light",
+                        ThemeMode.DARK to "Dark"
+                    ),
+                    selected = uiState.themeMode,
+                    onSelect = onSetThemeMode
+                )
+            }
 
             // Sounds & Alarm Timing
             Text("Alarm & Sound Preferences", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(top = 8.dp))

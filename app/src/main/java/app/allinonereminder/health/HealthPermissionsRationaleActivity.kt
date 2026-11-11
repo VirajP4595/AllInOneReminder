@@ -13,14 +13,21 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
-import app.allinonereminder.ui.theme.AllInOneReminderTheme
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import app.allinonereminder.data.repository.SettingsRepository
+import app.allinonereminder.data.repository.ThemeMode
+import app.allinonereminder.data.repository.dataStore
+import app.allinonereminder.ui.theme.AppTheme
 
 /** Shown by Health Connect ("Why does this app want my data?"). Plain-language privacy note. */
 class HealthPermissionsRationaleActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        val themeFlow = SettingsRepository(applicationContext.dataStore).themeModeFlow
         setContent {
-            AllInOneReminderTheme {
+            val themeMode by themeFlow.collectAsState(initial = ThemeMode.SYSTEM)
+            AppTheme(themeMode = themeMode) {
                 Surface(modifier = Modifier.fillMaxSize()) {
                     Column(
                         modifier = Modifier

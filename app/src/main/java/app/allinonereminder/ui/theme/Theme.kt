@@ -7,7 +7,13 @@ import androidx.compose.material3.Shapes
 import androidx.compose.material3.Typography
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
+import android.app.Activity
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.SideEffect
+import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.platform.LocalView
+import androidx.core.view.WindowCompat
+import app.allinonereminder.data.repository.ThemeMode
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
@@ -118,4 +124,41 @@ fun AllInOneReminderTheme(
         typography = AppTypography,
         content = content
     )
+}
+
+/** True when the app should be dark for this [ThemeMode] value ("system" follows the phone). */
+@Composable
+fun isDarkFor(themeMode: String?): Boolean = when (ThemeMode.normalize(themeMode)) {
+    ThemeMode.DARK -> true
+    ThemeMode.LIGHT -> false
+    else -> isSystemInDarkTheme()
+}
+
+/**
+ * The app theme for a whole activity, following the user's appearance setting. It also recolours
+ * the status and navigation bars, because the XML window theme only knows the phone's own mode.
+ */
+@Composable
+fun AppTheme(themeMode: String?, content: @Composable () -> Unit) {
+    val dark = isDarkFor(themeMode)
+    AllInOneReminderTheme(darkTheme = dark) {
+        val view = LocalView.current
+        if (!view.isInEditMode) {
+            val background = MaterialTheme.colorScheme.background.toArgb()
+            val navBar = MaterialTheme.colorScheme.surfaceContainer.toArgb()
+            SideEffect {
+                val window = (view.context as? Activity)?.window ?: return@SideEffect
+                @Suppress("DEPRECATION")
+                window.statusBarColor = background
+                @Suppress("DEPRECATION")
+                window.navigationBarColor = navBar
+                window.decorView.setBackgroundColor(background)
+                WindowCompat.getInsetsController(window, view).apply {
+                    isAppearanceLightStatusBars = !dark
+                    isAppearanceLightNavigationBars = !dark
+                }
+            }
+        }
+        content()
+    }
 }
