@@ -47,3 +47,12 @@ Format: `YYYY-MM-DD — Decision — Reason — Alternatives considered`
 - 2026-11-07 - Health Connect missing/old/unsupported or permission revoked behaves exactly as before: the source returns empty, the worker returns success, and Settings turns the toggle off on next view if permission is gone - Never crash or block manual completion - Failing the worker or showing errors
 - 2026-11-07 - Stats calendar counts only resolved doses (TAKEN/SKIPPED/MISSED, appointments excluded) and spoken reminders use the alarm audio stream - Future planned or superseded rows made future days red; media-stream speech could be silent - Counting every planned row
 - 2026-11-07 - Health Connect `connect-client` pinned to 1.1.0-alpha10 instead of stable 1.1.0 - Stable 1.1.0 requires Android Gradle Plugin 8.9.1+ and compileSdk 36 (CI failed `checkDebugAarMetadata` with AGP 8.8.2 / compileSdk 35); not worth a toolchain upgrade for one read-only feature - Upgrading AGP/compileSdk now
+
+## Releases are published automatically on a version bump (2026-11)
+
+Pushing tags from agent sessions is blocked, and creating releases by hand was easy to get wrong
+(v0.2.1 was tagged without an APK). CI now publishes the release itself: when a push to `main`
+carries a `versionName` in `app/build.gradle.kts` that has no `v<versionName>` tag yet, the release
+job creates the tag and the GitHub Release with the signed APK from the same run's full check.
+To release, bump `versionCode` and `versionName` in the PR and merge it. A PR without a bump
+publishes nothing. Manually created `v*` tags still work.
