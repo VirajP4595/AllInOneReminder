@@ -17,6 +17,16 @@ import javax.inject.Inject
 @AndroidEntryPoint
 class BootReceiver : BroadcastReceiver() {
 
+    private companion object {
+        val HANDLED_ACTIONS = setOf(
+            Intent.ACTION_BOOT_COMPLETED,
+            Intent.ACTION_TIME_CHANGED,
+            Intent.ACTION_TIMEZONE_CHANGED,
+            Intent.ACTION_MY_PACKAGE_REPLACED,
+            "android.app.action.SCHEDULE_EXACT_ALARM_PERMISSION_STATE_CHANGED"
+        )
+    }
+
     @Inject
     lateinit var alarmCoordinator: AlarmCoordinator
 
@@ -25,6 +35,8 @@ class BootReceiver : BroadcastReceiver() {
 
     override fun onReceive(context: Context, intent: Intent) {
         val action = intent.action ?: return
+        // Exported for system broadcasts; ignore anything else another app might send.
+        if (action !in HANDLED_ACTIONS) return
         val pendingResult = goAsync()
 
         val handler = Handler(Looper.getMainLooper())

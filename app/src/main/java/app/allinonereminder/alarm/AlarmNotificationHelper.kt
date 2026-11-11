@@ -101,6 +101,7 @@ object AlarmNotificationHelper {
                 NotificationManager.IMPORTANCE_DEFAULT
             ).apply {
                 description = "Reminders when medicine stock is running low"
+                lockscreenVisibility = Notification.VISIBILITY_PRIVATE
             }
 
             nm.createNotificationChannels(listOf(criticalChannel, normalChannel, gentleChannel, mealChannel, refillChannel))

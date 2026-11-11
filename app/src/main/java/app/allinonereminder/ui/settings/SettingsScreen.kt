@@ -464,8 +464,8 @@ fun SettingsScreen(
             confirmButton = {
                 Button(
                     onClick = {
-                        if (password.length < 6) {
-                            errorMessage = "Passphrase must be at least 6 characters"
+                        if (password.length < 8) {
+                            errorMessage = "Use at least 8 characters. A short phrase of words is best."
                         } else if (password != confirmPassword) {
                             errorMessage = "Passphrases do not match"
                         } else {
