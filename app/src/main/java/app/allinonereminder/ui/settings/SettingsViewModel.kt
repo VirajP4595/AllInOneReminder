@@ -34,7 +34,8 @@ data class SettingsUiState(
     val isProcessing: Boolean = false,
     val message: String? = null,
     val error: String? = null,
-    val restorePreview: BackupPreview? = null
+    val restorePreview: BackupPreview? = null,
+    val autoBackup: app.allinonereminder.backup.AutoBackup.Status? = null
 )
 
 @HiltViewModel
@@ -50,6 +51,7 @@ class SettingsViewModel @Inject constructor(
     private val _error = MutableStateFlow<String?>(null)
     private val _restorePreview = MutableStateFlow<BackupPreview?>(null)
     private val _healthStatus = MutableStateFlow(HealthAvailability.UNSUPPORTED to false)
+    private val _autoBackup = MutableStateFlow<app.allinonereminder.backup.AutoBackup.Status?>(null)
 
     val uiState: StateFlow<SettingsUiState> = combine(
         settingsRepository.settingsFlow,
@@ -77,7 +79,38 @@ class SettingsViewModel @Inject constructor(
         state.copy(healthAvailability = health.first, healthPermissionGranted = health.second)
     }.combine(settingsRepository.themeModeFlow) { state, mode ->
         state.copy(themeMode = mode)
+    }.combine(_autoBackup) { state, auto ->
+        state.copy(autoBackup = auto)
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), SettingsUiState())
+
+    fun refreshAutoBackup() {
+        _autoBackup.value = runCatching { app.allinonereminder.backup.AutoBackup.status(context) }.getOrNull()
+    }
+
+    /** Turns on weekly automatic backup into [folder]; the first backup runs right away. */
+    fun enableAutoBackup(folder: Uri, passphrase: String) {
+        val chars = passphrase.toCharArray()
+        try {
+            app.allinonereminder.backup.AutoBackup.enable(context, folder, chars)
+            _message.value = "Automatic backup is on. The first backup is being written now."
+        } catch (e: Exception) {
+            _error.value = "Could not turn on automatic backup. Pick the folder again."
+        } finally {
+            chars.fill('\u0000')
+        }
+        refreshAutoBackup()
+    }
+
+    fun disableAutoBackup() {
+        runCatching { app.allinonereminder.backup.AutoBackup.disable(context) }
+        _message.value = "Automatic backup is off. Existing backup files were kept."
+        refreshAutoBackup()
+    }
+
+    fun backUpNow() {
+        runCatching { app.allinonereminder.backup.AutoBackup.runNow(context) }
+        _message.value = "Backing up now. The time below updates when it's done."
+    }
 
     fun setThemeMode(mode: String) {
         viewModelScope.launch { settingsRepository.setThemeMode(mode) }
@@ -85,6 +118,7 @@ class SettingsViewModel @Inject constructor(
 
     /** Re-reads Health Connect availability and permission (call when the screen is shown/resumed). */
     fun refreshHealthStatus() {
+        refreshAutoBackup()
         viewModelScope.launch {
             val availability = activitySource.availability()
             val granted = availability == HealthAvailability.AVAILABLE && activitySource.hasExercisePermission()

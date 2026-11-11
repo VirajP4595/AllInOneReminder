@@ -56,6 +56,9 @@ fun SettingsScreen(
     onHealthPermissionResult: (Set<String>) -> Unit = {},
     onSeedData: () -> Unit = {},
     onCreateBackup: (Uri, String) -> Unit = { _, _ -> },
+    onEnableAutoBackup: (Uri, String) -> Unit = { _, _ -> },
+    onDisableAutoBackup: () -> Unit = {},
+    onBackUpNow: () -> Unit = {},
     onInspectRestore: (Uri, String) -> Unit = { _, _ -> },
     onConfirmRestore: (Uri, String) -> Unit = { _, _ -> },
     onDismissRestorePreview: () -> Unit = {},
@@ -106,6 +109,15 @@ fun SettingsScreen(
         }
         pickingSoundFor = level
         runCatching { ringtoneLauncher.launch(intent) }.onFailure { pickingSoundFor = null }
+    }
+
+    var showAutoBackupDialog by remember { mutableStateOf(false) }
+    var autoBackupPassphrase by remember { mutableStateOf("") }
+    val autoBackupFolderLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocumentTree()
+    ) { uri ->
+        if (uri != null && autoBackupPassphrase.isNotEmpty()) onEnableAutoBackup(uri, autoBackupPassphrase)
+        autoBackupPassphrase = ""
     }
 
     val createBackupLauncher = rememberLauncherForActivityResult(
@@ -437,6 +449,44 @@ fun SettingsScreen(
 
             // Backup & Restore Section (§17 / M6)
             Text("Backup & Restore", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(top = 8.dp))
+            // Automatic weekly backup (issue #27)
+            SectionCard(title = "Automatic weekly backup", icon = Icons.Default.CloudSync) {
+                val auto = uiState.autoBackup
+                if (auto?.enabled == true) {
+                    Text("Saving to: ${auto.folderName ?: "chosen folder"}", style = MaterialTheme.typography.bodyMedium)
+                    val last = auto.lastSuccessAt?.let {
+                        val time = java.time.Instant.ofEpochMilli(it).atZone(java.time.ZoneId.systemDefault())
+                        time.format(java.time.format.DateTimeFormatter.ofPattern("d MMM")) + ", " +
+                            time.format(app.allinonereminder.ui.components.AppTime.formatter())
+                    }
+                    Text(
+                        text = if (last != null) "Last backup: $last" else "No backup yet",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    if (auto.lastError != null) {
+                        Text(
+                            text = "Problem: ${auto.lastError}",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.error
+                        )
+                    }
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        FilledTonalButton(onClick = onBackUpNow) { Text("Back up now") }
+                        TextButton(onClick = onDisableAutoBackup) { Text("Turn off") }
+                    }
+                } else {
+                    Text(
+                        text = "Once a week the app saves an encrypted backup to a folder you choose (phone storage, SD card or Google Drive). The 4 newest are kept. Without a backup, a lost or reset phone loses everything.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Button(onClick = { showAutoBackupDialog = true }) { Text("Set up") }
+                }
+            }
+
             Card(
                 modifier = Modifier.fillMaxWidth(),
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLowest),
@@ -541,6 +591,57 @@ fun SettingsScreen(
                 }
             }
         }
+    }
+
+    if (showAutoBackupDialog) {
+        var pass by remember { mutableStateOf("") }
+        var confirm by remember { mutableStateOf("") }
+        val tooShort = pass.length < 8
+        val mismatch = confirm.isNotEmpty() && pass != confirm
+        AlertDialog(
+            onDismissRequest = { showAutoBackupDialog = false },
+            title = { Text("Backup passphrase") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(
+                        "Backups are encrypted with this passphrase. You'll need it to restore, so write it down. " +
+                            "So backups can run by themselves, it is stored on this phone, locked by the phone's secure key store.",
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                    AppTextField(
+                        value = pass,
+                        onValueChange = { pass = it },
+                        label = { Text("Passphrase (8+ characters)") },
+                        visualTransformation = PasswordVisualTransformation(),
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    AppTextField(
+                        value = confirm,
+                        onValueChange = { confirm = it },
+                        label = { Text("Repeat passphrase") },
+                        visualTransformation = PasswordVisualTransformation(),
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+                        singleLine = true,
+                        isError = mismatch,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    if (mismatch) Text("The passphrases don't match", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+                }
+            },
+            confirmButton = {
+                Button(
+                    enabled = !tooShort && pass == confirm,
+                    onClick = {
+                        autoBackupPassphrase = pass
+                        showAutoBackupDialog = false
+                        autoBackupFolderLauncher.launch(null)
+                    }
+                ) { Text("Choose folder") }
+            },
+            dismissButton = { TextButton(onClick = { showAutoBackupDialog = false }) { Text("Cancel") } }
+        )
     }
 
     // --- Passphrase Dialog for Backup ---

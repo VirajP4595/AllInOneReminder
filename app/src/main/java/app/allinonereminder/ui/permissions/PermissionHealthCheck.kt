@@ -93,7 +93,30 @@ object PermissionChecker {
             )
         )
 
-        // 5. Battery Optimization Ignored
+        // 5. Do Not Disturb must let alarms through (spec §16)
+        val nmDnd = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        val alarmsAllowed = runCatching {
+            when (nmDnd.currentInterruptionFilter) {
+                NotificationManager.INTERRUPTION_FILTER_NONE -> false
+                NotificationManager.INTERRUPTION_FILTER_PRIORITY ->
+                    (nmDnd.notificationPolicy.priorityCategories and
+                        NotificationManager.Policy.PRIORITY_CATEGORY_ALARMS) != 0
+                else -> true
+            }
+        }.getOrDefault(true)
+        val zenIntent = Intent("android.settings.ZEN_MODE_SETTINGS")
+        val dndIntent = if (zenIntent.resolveActivity(context.packageManager) != null) zenIntent
+        else Intent(Settings.ACTION_SOUND_SETTINGS)
+        list.add(
+            PermissionItem(
+                title = "Do Not Disturb",
+                description = "Do Not Disturb is on and blocks alarms. Allow alarms in its exceptions, or turn it off",
+                isGranted = alarmsAllowed,
+                fixIntent = dndIntent
+            )
+        )
+
+        // 6. Battery Optimization Ignored
         val pm = context.getSystemService(Context.POWER_SERVICE) as PowerManager
         val batteryIgnored = pm.isIgnoringBatteryOptimizations(context.packageName)
         val batteryIntent = Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS).apply {
@@ -129,8 +152,8 @@ object PermissionChecker {
             }
             manufacturer.contains("oppo") || manufacturer.contains("realme") -> {
                 "Oppo / Realme (ColorOS / Realme UI)" to
-                        "1. Settings > App management > All-in-One Reminder\n" +
-                        "2. Enable 'Allow auto-startup' and 'Allow background activity'\n" +
+                        "1. Settings > Apps (App management) > App list > All-in-One Reminder\n" +
+                        "2. Enable 'Auto launch' (ColorOS 11: Settings > Apps > Auto launch) and 'Allow background activity'\n" +
                         "3. In Battery > App battery management, turn off 'Pause app activity if unused'\n" +
                         "4. Permissions > Other permissions (or Notifications): allow 'Show on Lock screen' / 'Lock screen notifications' and 'Floating windows'"
             }
@@ -140,6 +163,18 @@ object PermissionChecker {
                         "2. Turn on All-in-One Reminder\n" +
                         "3. In Battery > Background power consumption management, select 'High background power usage'\n" +
                         "4. Permissions > Other: allow 'Display on lock screen' and 'Display pop-up windows'"
+            }
+            manufacturer.contains("huawei") || manufacturer.contains("honor") -> {
+                "Huawei / Honor (EMUI / MagicOS)" to
+                        "1. Settings > Battery > App launch > All-in-One Reminder\n" +
+                        "2. Turn off 'Manage automatically', then turn on Auto-launch, Secondary launch and Run in background\n" +
+                        "3. Settings > Apps > All-in-One Reminder > Notifications: allow lock screen notifications and banners"
+            }
+            manufacturer.contains("motorola") || manufacturer.contains("lenovo") -> {
+                "Motorola (My UX)" to
+                        "1. Settings > Apps > All-in-One Reminder > App battery usage\n" +
+                        "2. Choose 'Unrestricted' (or turn off 'Optimize')\n" +
+                        "3. Allow background usage and 'Display over other apps'"
             }
             manufacturer.contains("oneplus") -> {
                 "OnePlus (OxygenOS)" to

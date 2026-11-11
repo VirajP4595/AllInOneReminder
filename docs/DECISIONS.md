@@ -56,3 +56,23 @@ carries a `versionName` in `app/build.gradle.kts` that has no `v<versionName>` t
 job creates the tag and the GitHub Release with the signed APK from the same run's full check.
 To release, bump `versionCode` and `versionName` in the PR and merge it. A PR without a bump
 publishes nothing. Manually created `v*` tags still work.
+
+## Automatic backup stores the backup passphrase, Keystore-wrapped (2026-11, #27)
+
+Weekly automatic backup needs the backup passphrase without the user present. It is stored in
+app-private SharedPreferences, encrypted with an AES-256-GCM key that lives only in the Android
+Keystore, and only after the user agrees in the set-up dialog. Turning the feature off deletes the
+stored passphrase and the Keystore key. The passphrase is never logged or shown. The backup file
+format is unchanged (.airbackup, AES-256-GCM, PBKDF2 310k). The folder is chosen with the SAF tree
+picker, so cloud folders such as Google Drive work without INTERNET in this app.
+
+## Unanswered alarms stop after a few rings (2026-11, #70)
+
+An alarm nobody answers now rings at most 3 times (5 for "must not miss") at the item's re-ring
+interval, then the dose is marked missed and shown on Today with "Taken after all". Before, it
+re-rang every 5 minutes until the grace period ended. `ringCount` now counts rings only.
+
+## Roadmap tracking (2026-11)
+
+Planned work lives in GitHub issues, listed in the tracker issue #92, with the research behind it
+in `docs/research/improvement-ideas-2026-11.md`.
