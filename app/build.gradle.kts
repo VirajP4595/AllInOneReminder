@@ -16,8 +16,8 @@ android {
         applicationId = "app.allinonereminder"
         minSdk = 30
         targetSdk = 35
-        versionCode = 4
-        versionName = "0.2.1"
+        versionCode = 5
+        versionName = "0.2.2"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
@@ -202,8 +202,14 @@ dependencies {
 }
 
 
-// Screenshot tests only run with -Pscreenshots=true (see .github/workflows/screenshots.yml).
+// Screenshot tests only run with -Pscreenshots=true, and only for the debug variant (they need the
+// test activity from ui-test-manifest, which is a debug-only dependency). See screenshots.yml.
 tasks.withType<Test>().configureEach {
-    systemProperty("screenshots", (project.findProperty("screenshots") ?: "false").toString())
+    val screenshotsOn = (project.findProperty("screenshots") ?: "false").toString() == "true"
+    systemProperty("screenshots", screenshotsOn.toString())
     systemProperty("screenshots.dir", layout.buildDirectory.dir("screenshots").get().asFile.absolutePath)
+    if (!screenshotsOn || name.contains("Release")) {
+        filter.excludeTestsMatching("app.allinonereminder.screenshots.*")
+        filter.isFailOnNoMatchingTests = false
+    }
 }
