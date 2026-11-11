@@ -26,6 +26,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import app.allinonereminder.model.AppointmentStatus
+import app.allinonereminder.ui.components.*
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
 
@@ -93,7 +94,7 @@ fun AppointmentEditorScreen(
                 Spacer(modifier = Modifier.height(4.dp))
                 LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     items(uiState.profiles) { profile ->
-                        FilterChip(
+                        ChoiceChip(
                             selected = uiState.selectedProfileId == profile.id,
                             onClick = { viewModel.onProfileSelected(profile.id) },
                             label = { Text(profile.name) },
@@ -112,7 +113,7 @@ fun AppointmentEditorScreen(
 
             // Doctor / Provider Name
             item {
-                OutlinedTextField(
+                AppTextField(
                     value = uiState.doctor,
                     onValueChange = { viewModel.onDoctorChange(it) },
                     label = { Text("Doctor / Specialist Name *") },
@@ -125,7 +126,7 @@ fun AppointmentEditorScreen(
 
             // Location / Clinic
             item {
-                OutlinedTextField(
+                AppTextField(
                     value = uiState.place,
                     onValueChange = { viewModel.onPlaceChange(it) },
                     label = { Text("Clinic / Hospital / Location") },
@@ -138,7 +139,7 @@ fun AppointmentEditorScreen(
 
             // Purpose / Specialty
             item {
-                OutlinedTextField(
+                AppTextField(
                     value = uiState.purpose,
                     onValueChange = { viewModel.onPurposeChange(it) },
                     label = { Text("Purpose / Specialty") },
@@ -151,7 +152,7 @@ fun AppointmentEditorScreen(
 
             // Date & Time Picker Section
             item {
-                Card(modifier = Modifier.fillMaxWidth()) {
+                AppCard(modifier = Modifier.fillMaxWidth()) {
                     Column(modifier = Modifier.padding(16.dp)) {
                         Text(
                             text = "Date & Time",
@@ -250,7 +251,7 @@ fun AppointmentEditorScreen(
 
             // Reminders Section
             item {
-                Card(modifier = Modifier.fillMaxWidth()) {
+                AppCard(modifier = Modifier.fillMaxWidth()) {
                     Column(modifier = Modifier.padding(16.dp)) {
                         Text(
                             text = "Visit Reminders",
@@ -278,7 +279,7 @@ fun AppointmentEditorScreen(
                             horizontalArrangement = Arrangement.spacedBy(6.dp)
                         ) {
                             reminderOptions.take(3).forEach { (minutes, label) ->
-                                FilterChip(
+                                ChoiceChip(
                                     selected = uiState.remindMinutesList.contains(minutes),
                                     onClick = { viewModel.toggleRemindMinute(minutes) },
                                     label = { Text(label, fontSize = 12.sp) }
@@ -290,7 +291,7 @@ fun AppointmentEditorScreen(
                             horizontalArrangement = Arrangement.spacedBy(6.dp)
                         ) {
                             reminderOptions.drop(3).forEach { (minutes, label) ->
-                                FilterChip(
+                                ChoiceChip(
                                     selected = uiState.remindMinutesList.contains(minutes),
                                     onClick = { viewModel.toggleRemindMinute(minutes) },
                                     label = { Text(label, fontSize = 12.sp) }
@@ -303,7 +304,7 @@ fun AppointmentEditorScreen(
 
             // Preparation Instructions & Alarms
             item {
-                Card(modifier = Modifier.fillMaxWidth()) {
+                AppCard(modifier = Modifier.fillMaxWidth()) {
                     Column(modifier = Modifier.padding(16.dp)) {
                         Text(
                             text = "Preparation Instructions & Alerts",
@@ -349,7 +350,7 @@ fun AppointmentEditorScreen(
                         // Custom Prep Input
                         Text("Add Custom Prep Step:", style = MaterialTheme.typography.labelMedium)
                         Spacer(modifier = Modifier.height(6.dp))
-                        OutlinedTextField(
+                        AppTextField(
                             value = customPrepText,
                             onValueChange = { customPrepText = it },
                             label = { Text("Prep Instruction") },
@@ -370,7 +371,7 @@ fun AppointmentEditorScreen(
                         )
                         LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                             items(timeOptions) { (min, label) ->
-                                FilterChip(
+                                ChoiceChip(
                                     selected = customPrepMinutes == min,
                                     onClick = { customPrepMinutes = min },
                                     label = { Text(label, fontSize = 12.sp) }
@@ -404,7 +405,7 @@ fun AppointmentEditorScreen(
                                     Card(
                                         shape = RoundedCornerShape(8.dp),
                                         colors = CardDefaults.cardColors(
-                                            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                                            containerColor = MaterialTheme.colorScheme.surfaceContainerLow
                                         ),
                                         modifier = Modifier.fillMaxWidth()
                                     ) {
@@ -441,7 +442,7 @@ fun AppointmentEditorScreen(
 
             // Prescriptions & Document Attachments
             item {
-                Card(modifier = Modifier.fillMaxWidth()) {
+                AppCard(modifier = Modifier.fillMaxWidth()) {
                     Column(modifier = Modifier.padding(16.dp)) {
                         Row(
                             modifier = Modifier.fillMaxWidth(),
@@ -535,7 +536,7 @@ fun AppointmentEditorScreen(
 
             // Notes and Prescriptions Notes
             item {
-                OutlinedTextField(
+                AppTextField(
                     value = uiState.notes,
                     onValueChange = { viewModel.onNotesChange(it) },
                     label = { Text("Doctor Visit Notes / Summary (optional)") },
@@ -547,7 +548,7 @@ fun AppointmentEditorScreen(
             }
 
             item {
-                OutlinedTextField(
+                AppTextField(
                     value = uiState.prescriptionNotes,
                     onValueChange = { viewModel.onPrescriptionNotesChange(it) },
                     label = { Text("Prescription & Follow-up Notes (optional)") },
@@ -565,7 +566,7 @@ fun AppointmentEditorScreen(
                     Spacer(modifier = Modifier.height(4.dp))
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         AppointmentStatus.entries.forEach { s ->
-                            FilterChip(
+                            ChoiceChip(
                                 selected = uiState.status == s,
                                 onClick = { viewModel.onStatusChange(s) },
                                 label = { Text(s.name) }

@@ -24,6 +24,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import app.allinonereminder.model.AppointmentAttachment
+import app.allinonereminder.ui.components.*
 import app.allinonereminder.model.AppointmentStatus
 import app.allinonereminder.ui.util.AttachmentStorageHelper
 import java.time.Instant
@@ -111,7 +112,7 @@ fun AppointmentDetailScreen(
                     Spacer(modifier = Modifier.height(4.dp))
                     Card(
                         modifier = Modifier.fillMaxWidth(),
-                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)
                     ) {
                         Column(modifier = Modifier.padding(16.dp)) {
                             Row(
@@ -220,7 +221,7 @@ fun AppointmentDetailScreen(
 
                 // Preparation Notes Section
                 item {
-                    Card(modifier = Modifier.fillMaxWidth()) {
+                    AppCard(modifier = Modifier.fillMaxWidth()) {
                         Column(modifier = Modifier.padding(16.dp)) {
                             Text(
                                 text = "Preparation Reminders",
@@ -263,7 +264,7 @@ fun AppointmentDetailScreen(
 
                 // Reminders Planned Section
                 item {
-                    Card(modifier = Modifier.fillMaxWidth()) {
+                    AppCard(modifier = Modifier.fillMaxWidth()) {
                         Column(modifier = Modifier.padding(16.dp)) {
                             Text(
                                 text = "Visit Alerts",
@@ -308,7 +309,7 @@ fun AppointmentDetailScreen(
 
                 // Attachments Section (Reports, Prescriptions, Photos, PDFs)
                 item {
-                    Card(modifier = Modifier.fillMaxWidth()) {
+                    AppCard(modifier = Modifier.fillMaxWidth()) {
                         Column(modifier = Modifier.padding(16.dp)) {
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
@@ -352,7 +353,7 @@ fun AppointmentDetailScreen(
 
                 // Notes & Prescription Notes Section
                 item {
-                    Card(modifier = Modifier.fillMaxWidth()) {
+                    AppCard(modifier = Modifier.fillMaxWidth()) {
                         Column(modifier = Modifier.padding(16.dp)) {
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
@@ -429,14 +430,14 @@ fun AppointmentDetailScreen(
             title = { Text("Edit Visit & Prescription Notes") },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    OutlinedTextField(
+                    AppTextField(
                         value = editedNotes,
                         onValueChange = { editedNotes = it },
                         label = { Text("Visit Notes / Diagnosis") },
                         modifier = Modifier.fillMaxWidth(),
                         maxLines = 4
                     )
-                    OutlinedTextField(
+                    AppTextField(
                         value = editedPrescription,
                         onValueChange = { editedPrescription = it },
                         label = { Text("Prescription & Follow-up") },

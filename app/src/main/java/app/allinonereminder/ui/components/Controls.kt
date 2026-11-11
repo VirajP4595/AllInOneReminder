@@ -425,3 +425,18 @@ fun readableTextColor(background: Color): Color {
     val contrastWithDark = (l + 0.05f) / (dark.luminance() + 0.05f)
     return if (contrastWithDark >= contrastWithWhite) dark else Color.White
 }
+
+/** The app's standard card: light surface with a hairline border, no shadow. */
+@Composable
+fun AppCard(
+    modifier: Modifier = Modifier,
+    content: @Composable ColumnScope.() -> Unit
+) {
+    Card(
+        modifier = modifier,
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLowest),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
+        content = content
+    )
+}

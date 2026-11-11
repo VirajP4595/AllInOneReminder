@@ -83,12 +83,28 @@ fun PermissionHealthCheckScreen(
         ) {
             item {
                 Text(
-                    text = "Permission Health Check",
+                    text = "Alarm setup",
                     style = MaterialTheme.typography.headlineMedium,
                     fontWeight = FontWeight.Bold
                 )
+                val ready = permissions.count { it.isGranted }
                 Text(
-                    text = "Ensure all critical permissions are green so reminders ring reliably on a locked phone.",
+                    text = if (ready == permissions.size) "All set. Reminders will ring reliably." else "$ready of ${permissions.size} ready",
+                    style = MaterialTheme.typography.titleMedium,
+                    color = if (ready == permissions.size) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
+                )
+                androidx.compose.material3.LinearProgressIndicator(
+                    progress = { if (permissions.isEmpty()) 0f else ready / permissions.size.toFloat() },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 8.dp)
+                        .height(8.dp)
+                        .clip(CircleShape),
+                    gapSize = 0.dp,
+                    drawStopIndicator = {}
+                )
+                Text(
+                    text = "Turn these on so reminders ring on time, even on a locked phone.",
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -199,7 +215,9 @@ fun PermissionItemCard(item: PermissionItem, onFix: () -> Unit) {
 
     Card(
         modifier = Modifier.fillMaxWidth(),
-        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLowest),
+        border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
     ) {
         Row(
             modifier = Modifier
@@ -241,9 +259,9 @@ fun PermissionItemCard(item: PermissionItem, onFix: () -> Unit) {
                 Spacer(modifier = Modifier.width(8.dp))
                 Button(
                     onClick = onFix,
-                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
                 ) {
-                    Text("Fix")
+                    Text("Turn on")
                 }
             }
         }

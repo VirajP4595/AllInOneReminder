@@ -21,6 +21,9 @@ import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import app.allinonereminder.ui.components.*
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import app.allinonereminder.model.MealType
@@ -57,7 +60,7 @@ fun OnboardingScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Welcome to All-in-One Reminder") },
+                title = { Text("All-in-One Reminder", style = MaterialTheme.typography.titleLarge) },
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = MaterialTheme.colorScheme.background,
                     titleContentColor = MaterialTheme.colorScheme.onBackground
@@ -107,6 +110,27 @@ fun OnboardingScreen(
 
             Spacer(modifier = Modifier.height(24.dp))
 
+            // Step indicator
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                modifier = Modifier
+                    .padding(bottom = 16.dp)
+                    .semantics { contentDescription = "Step $step of 5" }
+            ) {
+                (1..5).forEach { i ->
+                    Box(
+                        modifier = Modifier
+                            .height(8.dp)
+                            .width(if (i == step) 24.dp else 8.dp)
+                            .clip(CircleShape)
+                            .background(
+                                if (i <= step) MaterialTheme.colorScheme.primary
+                                else MaterialTheme.colorScheme.outlineVariant
+                            )
+                    )
+                }
+            }
+
             // Navigation buttons
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -153,45 +177,90 @@ fun OnboardingScreen(
 @Composable
 private fun WelcomeStep() {
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
-        Icon(
-            imageVector = Icons.Default.HealthAndSafety,
-            contentDescription = "Health & Safety",
-            tint = MaterialTheme.colorScheme.primary,
-            modifier = Modifier.size(72.dp)
-        )
-        Spacer(modifier = Modifier.height(16.dp))
+        Box(
+            modifier = Modifier
+                .size(132.dp)
+                .clip(CircleShape)
+                .background(
+                    androidx.compose.ui.graphics.Brush.linearGradient(listOf(Color(0xFF00796B), Color(0xFF00463E)))
+                ),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(
+                imageVector = Icons.Default.NotificationsActive,
+                contentDescription = null,
+                tint = Color.White,
+                modifier = Modifier.size(64.dp)
+            )
+        }
+        Spacer(modifier = Modifier.height(24.dp))
         Text(
-            text = "Reliable Family Health Reminders",
-            style = MaterialTheme.typography.headlineSmall,
-            fontWeight = FontWeight.Bold,
+            text = "Your family's health, on time",
+            style = MaterialTheme.typography.headlineMedium,
             textAlign = TextAlign.Center
         )
-        Spacer(modifier = Modifier.height(12.dp))
+        Spacer(modifier = Modifier.height(8.dp))
         Text(
-            text = "Never miss doses, meals, or health appointments. All-in-One Reminder rings full-screen alarms even when your phone is locked or on Do Not Disturb.",
+            text = "Medicines, water, walks, meals and doctor visits in one place.",
             style = MaterialTheme.typography.bodyLarge,
             textAlign = TextAlign.Center,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
         Spacer(modifier = Modifier.height(24.dp))
-        Card(
-            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer),
-            modifier = Modifier.fillMaxWidth()
+        WelcomeFeature(
+            icon = Icons.Default.Alarm,
+            accent = Color(0xFF00897B),
+            title = "Alarms you can't miss",
+            text = "Full-screen alarms, even on a locked phone."
+        )
+        WelcomeFeature(
+            icon = Icons.Default.EmojiEvents,
+            accent = Color(0xFFF4511E),
+            title = "Points, streaks and badges",
+            text = "Every reminder you keep up counts."
+        )
+        WelcomeFeature(
+            icon = Icons.Default.Lock,
+            accent = Color(0xFF5C6BC0),
+            title = "Private by design",
+            text = "Everything stays on this phone. No account, no ads."
+        )
+        Spacer(modifier = Modifier.height(16.dp))
+        Text(
+            text = "This app helps you remember; it does not give medical advice. Always follow your doctor's directions.",
+            style = MaterialTheme.typography.bodySmall,
+            textAlign = TextAlign.Center,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+    }
+}
+
+@Composable
+private fun WelcomeFeature(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    accent: Color,
+    title: String,
+    text: String
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Box(
+            modifier = Modifier
+                .size(44.dp)
+                .clip(CircleShape)
+                .background(accent.copy(alpha = 0.14f)),
+            contentAlignment = Alignment.Center
         ) {
-            Column(modifier = Modifier.padding(16.dp)) {
-                Text(
-                    text = "Medical Disclaimer",
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.onErrorContainer
-                )
-                Spacer(modifier = Modifier.height(4.dp))
-                Text(
-                    text = "This application is an organizational tool to support medication tracking. It does not provide medical advice. Always follow your prescribing physician's directions.",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onErrorContainer
-                )
-            }
+            Icon(icon, contentDescription = null, tint = accent, modifier = Modifier.size(24.dp))
+        }
+        Spacer(modifier = Modifier.width(14.dp))
+        Column {
+            Text(title, style = MaterialTheme.typography.titleMedium)
+            Text(text, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
 }
@@ -224,7 +293,7 @@ private fun ProfileStep(
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
         Spacer(modifier = Modifier.height(20.dp))
-        OutlinedTextField(
+        AppTextField(
             value = profileName,
             onValueChange = onNameChange,
             label = { Text("Profile Name") },
@@ -340,7 +409,7 @@ private fun MealTimeRow(
 ) {
     Card(
         modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)
     ) {
         Row(
             modifier = Modifier
