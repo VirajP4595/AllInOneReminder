@@ -119,7 +119,7 @@ object PermissionChecker {
                         "1. Open Security app > Manage apps > All-in-One Reminder\n" +
                         "2. Enable 'Autostart'\n" +
                         "3. In Battery saver, choose 'No restrictions'\n" +
-                        "4. Enable 'Display pop-up windows while running in the background'"
+                        "4. Other permissions: enable 'Show on Lock screen' and 'Display pop-up windows while running in the background'"
             }
             manufacturer.contains("samsung") -> {
                 "Samsung (One UI)" to
@@ -131,19 +131,22 @@ object PermissionChecker {
                 "Oppo / Realme (ColorOS / Realme UI)" to
                         "1. Settings > App management > All-in-One Reminder\n" +
                         "2. Enable 'Allow auto-startup' and 'Allow background activity'\n" +
-                        "3. In Battery > App battery management, turn off 'Pause app activity if unused'"
+                        "3. In Battery > App battery management, turn off 'Pause app activity if unused'\n" +
+                        "4. Permissions > Other permissions (or Notifications): allow 'Show on Lock screen' / 'Lock screen notifications' and 'Floating windows'"
             }
             manufacturer.contains("vivo") || manufacturer.contains("iqoo") -> {
                 "Vivo / iQOO (Funtouch OS / OriginOS)" to
                         "1. Settings > Apps & permissions > Permission management > Autostart\n" +
                         "2. Turn on All-in-One Reminder\n" +
-                        "3. In Battery > Background power consumption management, select 'High background power usage'"
+                        "3. In Battery > Background power consumption management, select 'High background power usage'\n" +
+                        "4. Permissions > Other: allow 'Display on lock screen' and 'Display pop-up windows'"
             }
             manufacturer.contains("oneplus") -> {
                 "OnePlus (OxygenOS)" to
                         "1. Settings > Apps > App management > All-in-One Reminder > Battery usage\n" +
                         "2. Allow background activity and auto-launch\n" +
-                        "3. In Optimize battery use, set to 'Don't optimize'"
+                        "3. In Optimize battery use, set to 'Don't optimize'\n" +
+                        "4. Notifications: allow on the lock screen; allow 'Floating windows'"
             }
             else -> {
                 "Standard Android Device" to

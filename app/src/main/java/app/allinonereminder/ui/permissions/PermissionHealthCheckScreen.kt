@@ -181,6 +181,21 @@ fun PermissionHealthCheckScreen(
                             text = oemText,
                             style = MaterialTheme.typography.bodyMedium
                         )
+                        Spacer(modifier = Modifier.height(8.dp))
+                        androidx.compose.material3.FilledTonalButton(
+                            onClick = {
+                                try {
+                                    context.startActivity(
+                                        Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS)
+                                            .setData(android.net.Uri.fromParts("package", context.packageName, null))
+                                            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                    )
+                                } catch (_: android.content.ActivityNotFoundException) {
+                                }
+                            }
+                        ) {
+                            Text("Open app settings")
+                        }
                     }
                 }
             }
