@@ -49,6 +49,10 @@ class AlarmRingService : Service() {
         const val ACTION_SILENCE = "app.allinonereminder.action.SILENCE"
         const val EXTRA_OCCURRENCE_ID = "extra_occurrence_id"
 
+        /** Unanswered rings before a dose is marked missed: normal items, and "must not miss" items. */
+        const val MAX_RINGS_NORMAL = 3
+        const val MAX_RINGS_CRITICAL = 5
+
         /** Tests replace this with a controllable dispatcher so background work is deterministic. */
         @androidx.annotation.VisibleForTesting
         var coroutineDispatcher: kotlinx.coroutines.CoroutineDispatcher = Dispatchers.Default
@@ -303,9 +307,10 @@ class AlarmRingService : Service() {
         // Sound & Vibration based on criticality:
         // GENTLE items must play a single notification sound with no full-screen alarm and no looping alarm
         if (highestCriticality == Criticality.GENTLE) {
-            playSingleGentleSound()
+            playSingleGentleSound(chosenSoundUri(settings.soundGentle))
         } else {
-            startLoopingAlarmSound()
+            val soundSetting = if (highestCriticality == Criticality.CRITICAL) settings.soundCritical else settings.soundNormal
+            startLoopingAlarmSound(chosenSoundUri(soundSetting))
             if (settings.vibrationEnabled) {
                 startVibration()
             }
@@ -319,20 +324,27 @@ class AlarmRingService : Service() {
         silenceRunnable = Runnable {
             scope.launch {
                 stopSoundAndVibration()
-                // Update remaining ringing items to PENDING with reRingMinutes (moves remindAt, R2-1)
+                // Nobody answered. Ring again after reRingMinutes (moves remindAt, R2-1), but only up
+                // to a cap: after that many unanswered rings the dose is marked missed and shows on
+                // Today ("Taken after all" is still possible), instead of ringing every few minutes.
                 val reRingMinutes = items.minOfOrNull { it.reRingMinutes } ?: 5
                 val nextReRing = System.currentTimeMillis() + reRingMinutes * 60_000L
+                val itemsById = items.associateBy { it.id }
                 for (id in activeOccurrenceIds) {
                     val current = occurrenceRepository.getByIdSync(id)
                     if (current?.status == OccurrenceStatus.RINGING) {
-                        occurrenceRepository.updateOccurrence(
-                            current.copy(
-                                status = OccurrenceStatus.PENDING,
-                                remindAt = nextReRing,
-                                ringCount = current.ringCount + 1,
-                                updatedAt = System.currentTimeMillis()
+                        val cap = maxRingsFor(itemsById[current.itemId]?.criticality)
+                        if (current.ringCount >= cap) {
+                            occurrenceRepository.markMissedTargeted(current.id)
+                        } else {
+                            occurrenceRepository.updateOccurrence(
+                                current.copy(
+                                    status = OccurrenceStatus.PENDING,
+                                    remindAt = nextReRing,
+                                    updatedAt = System.currentTimeMillis()
+                                )
                             )
-                        )
+                        }
                     }
                 }
                 activeOccurrenceIds.clear()
@@ -344,30 +356,43 @@ class AlarmRingService : Service() {
         handler.postDelayed(silenceRunnable!!, silenceDelayMillis)
     }
 
-    private fun startLoopingAlarmSound() {
-        try {
-            val alertUri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM)
-                ?: RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION)
+    /** Unanswered rings (first ring included) before a dose is marked missed. */
+    private fun maxRingsFor(criticality: Criticality?): Int =
+        if (criticality == Criticality.CRITICAL) MAX_RINGS_CRITICAL else MAX_RINGS_NORMAL
 
-            mediaPlayer = MediaPlayer().apply {
-                setDataSource(applicationContext, alertUri)
-                setAudioAttributes(
-                    AudioAttributes.Builder()
-                        .setUsage(AudioAttributes.USAGE_ALARM)
-                        .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
-                        .build()
-                )
-                isLooping = true
-                prepare()
-                start()
+    /** The user's picked sound, or null for the phone default (also for old values like "alarm"). */
+    private fun chosenSoundUri(setting: String?): android.net.Uri? =
+        setting?.takeIf { it.contains("://") }?.let { runCatching { android.net.Uri.parse(it) }.getOrNull() }
+
+    private fun startLoopingAlarmSound(chosen: android.net.Uri? = null) {
+        val fallback = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM)
+            ?: RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION)
+        // A picked sound can disappear (file deleted, no access); fall back to the default.
+        for (uri in listOfNotNull(chosen, fallback).distinct()) {
+            try {
+                mediaPlayer = MediaPlayer().apply {
+                    setDataSource(applicationContext, uri)
+                    setAudioAttributes(
+                        AudioAttributes.Builder()
+                            .setUsage(AudioAttributes.USAGE_ALARM)
+                            .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+                            .build()
+                    )
+                    isLooping = true
+                    prepare()
+                    start()
+                }
+                return
+            } catch (_: Exception) {
+                runCatching { mediaPlayer?.release() }
+                mediaPlayer = null
             }
-        } catch (_: Exception) {
         }
     }
 
-    private fun playSingleGentleSound() {
+    private fun playSingleGentleSound(chosen: android.net.Uri? = null) {
         try {
-            val alertUri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION)
+            val alertUri = chosen ?: RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION)
             mediaPlayer = MediaPlayer().apply {
                 setDataSource(applicationContext, alertUri)
                 setAudioAttributes(

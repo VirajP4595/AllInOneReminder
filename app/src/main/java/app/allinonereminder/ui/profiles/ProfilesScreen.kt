@@ -271,40 +271,36 @@ private fun ProfileEditDialog(
                 }
 
                 Spacer(modifier = Modifier.height(4.dp))
-                Text("Meal Anchor Times (Hour)", fontWeight = FontWeight.Bold)
-
-                listOf(MealType.BREAKFAST, MealType.LUNCH, MealType.DINNER).forEach { meal ->
-                    Text(meal.name.lowercase().replaceFirstChar { it.uppercase() }, fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
-                    listOf(DayType.WEEKDAY, DayType.WEEKEND).forEach { dayType ->
-                        val anchor = currentAnchors.firstOrNull { it.meal == meal && it.dayType == dayType }
-                        val currentHour = (anchor?.minuteOfDay ?: 480) / 60
-
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Text(dayType.name.lowercase().replaceFirstChar { it.uppercase() }, fontSize = 13.sp)
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                IconButton(onClick = {
-                                    if (currentHour > 0) {
-                                        val newHour = currentHour - 1
-                                        currentAnchors = updateAnchorHour(currentAnchors, meal, dayType, newHour)
-                                    }
-                                }) {
-                                    Icon(Icons.Default.Remove, contentDescription = "-1h")
-                                }
-                                Text(String.format("%02d:00", currentHour), fontWeight = FontWeight.Bold)
-                                IconButton(onClick = {
-                                    if (currentHour < 23) {
-                                        val newHour = currentHour + 1
-                                        currentAnchors = updateAnchorHour(currentAnchors, meal, dayType, newHour)
-                                    }
-                                }) {
-                                    Icon(Icons.Default.Add, contentDescription = "+1h")
-                                }
-                            }
-                        }
+                Text("Daily routine", fontWeight = FontWeight.Bold)
+                Text(
+                    "Reminders like \"after breakfast\" or \"at bed time\" use these times.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                var routineDayType by remember { mutableStateOf(DayType.WEEKDAY) }
+                app.allinonereminder.ui.components.SegmentedChoice(
+                    options = listOf(DayType.WEEKDAY to "Weekdays", DayType.WEEKEND to "Weekends"),
+                    selected = routineDayType,
+                    onSelect = { routineDayType = it }
+                )
+                MealType.entries.forEach { meal ->
+                    val anchor = currentAnchors.firstOrNull { it.meal == meal && it.dayType == routineDayType }
+                    val minuteOfDay = anchor?.minuteOfDay ?: defaultRoutineMinute(meal)
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(routineLabel(meal), style = MaterialTheme.typography.bodyMedium)
+                        app.allinonereminder.ui.components.TimeChip(
+                            minuteOfDay = minuteOfDay,
+                            onChange = { newMinute ->
+                                currentAnchors = setAnchorMinute(
+                                    currentAnchors, profile.id, meal, routineDayType, newMinute
+                                )
+                            },
+                            contentDescription = "Change ${routineLabel(meal).lowercase()} time"
+                        )
                     }
                 }
             }
@@ -332,16 +328,45 @@ private fun ProfileEditDialog(
     )
 }
 
-private fun updateAnchorHour(
+private fun routineLabel(meal: MealType): String = when (meal) {
+    MealType.WAKE -> "Wake up"
+    MealType.BREAKFAST -> "Breakfast"
+    MealType.LUNCH -> "Lunch"
+    MealType.SNACK -> "Snack"
+    MealType.DINNER -> "Dinner"
+    MealType.BED -> "Bed time"
+}
+
+/** Same defaults as new profiles get (DefaultMealAnchors). */
+private fun defaultRoutineMinute(meal: MealType): Int = when (meal) {
+    MealType.WAKE -> 7 * 60
+    MealType.BREAKFAST -> 8 * 60 + 30
+    MealType.LUNCH -> 13 * 60 + 30
+    MealType.SNACK -> 17 * 60
+    MealType.DINNER -> 20 * 60 + 30
+    MealType.BED -> 22 * 60 + 30
+}
+
+/** Sets one routine time, adding the anchor if this profile doesn't have it yet. */
+private fun setAnchorMinute(
     anchors: List<MealAnchor>,
+    profileId: String,
     meal: MealType,
     dayType: DayType,
-    newHour: Int
+    minuteOfDay: Int
 ): List<MealAnchor> {
-    return anchors.map { a ->
-        if (a.meal == meal && a.dayType == dayType) {
-            a.copy(minuteOfDay = newHour * 60)
-        } else a
+    val exists = anchors.any { it.meal == meal && it.dayType == dayType }
+    return if (exists) {
+        anchors.map { a -> if (a.meal == meal && a.dayType == dayType) a.copy(minuteOfDay = minuteOfDay) else a }
+    } else {
+        anchors + MealAnchor(
+            id = java.util.UUID.randomUUID().toString(),
+            profileId = profileId,
+            dayType = dayType,
+            meal = meal,
+            minuteOfDay = minuteOfDay,
+            updatedAt = System.currentTimeMillis()
+        )
     }
 }
 

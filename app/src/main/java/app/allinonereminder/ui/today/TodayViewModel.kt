@@ -67,6 +67,9 @@ data class TodayProgress(
     val movementPercent: Int?
 )
 
+/** Shown in a snackbar with an Undo button after Take/Skip on Today. */
+data class UndoInfo(val message: String, val occurrenceId: String, val previous: Occurrence)
+
 /** Points needed per level. */
 const val POINTS_PER_LEVEL = 100
 
@@ -84,6 +87,7 @@ data class TodayUiState(
     val asNeededLimitItem: AsNeededUiModel? = null,
     val progress: TodayProgress? = null,
     val rewardMessage: String? = null,
+    val undo: UndoInfo? = null,
     val isLoading: Boolean = true
 )
 
@@ -106,6 +110,7 @@ class TodayViewModel @Inject constructor(
 
     private val _progress = MutableStateFlow<TodayProgress?>(null)
     private val _reward = MutableStateFlow<String?>(null)
+    private val _undo = MutableStateFlow<UndoInfo?>(null)
 
     /** Set when the user logs a dose here, so the next points increase is celebrated once. */
     @Volatile private var celebrateNextGain = false
@@ -189,7 +194,8 @@ class TodayViewModel @Inject constructor(
         _asNeededLimitItem,
         stockEventRepository?.getAllCurrentStocksFlow() ?: flowOf(emptyMap<String, Double>()),
         _progress,
-        _reward
+        _reward,
+        _undo
     ) { args ->
         @Suppress("UNCHECKED_CAST")
         val profiles = args[0] as List<Profile>
@@ -209,6 +215,7 @@ class TodayViewModel @Inject constructor(
         val stockMap = args[10] as Map<String, Double>
         val progress = args[11] as TodayProgress?
         val reward = args[12] as String?
+        val undo = args[13] as UndoInfo?
         val itemMap = allItems.associateBy { it.id }
         val profileMap = profiles.associateBy { it.id }
         val scheduleMap = allSchedules.associateBy { it.id }
@@ -243,7 +250,7 @@ class TodayViewModel @Inject constructor(
         val asNeededItems = allSchedules
             .filter { it.recurrence == RecurrenceType.PRN }
             .mapNotNull { sched ->
-                val item = itemMap[sched.itemId] ?: return@mapNotNull null
+                val item = itemMap[sched.itemId]?.takeIf { it.active } ?: return@mapNotNull null
                 if (selectedProfileId != null && item.profileId != selectedProfileId) {
                     return@mapNotNull null
                 }
@@ -286,6 +293,7 @@ class TodayViewModel @Inject constructor(
             asNeededLimitItem = asNeededLimitItem,
             progress = progress,
             rewardMessage = reward,
+            undo = undo,
             isLoading = false
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), TodayUiState())
@@ -325,10 +333,81 @@ class TodayViewModel @Inject constructor(
             AlarmRingService.stopForOccurrence(context, occ.id)
 
             celebrateNextGain = true
-            occurrenceRepository.markOccurrenceTaken(occ.id, now)
+            if (occurrenceRepository.markOccurrenceTaken(occ.id, now)) {
+                _undo.value = UndoInfo("${item.name} marked taken", occ.id, occ)
+            }
             refillAlertNotifier?.checkAndNotify(occ.itemId)
             alarmCoordinator.reschedule("taken_from_today")
         }
+    }
+
+    /** Reverts the last Take/Skip done on Today (the snackbar's Undo button). */
+    fun undoLast() {
+        val undo = _undo.value ?: return
+        _undo.value = null
+        viewModelScope.launch {
+            occurrenceRepository.reopen(undo.occurrenceId, undo.previous)
+            recordUndo(undo.occurrenceId, undo.previous.status.name)
+            alarmCoordinator.reschedule("undo_from_today")
+        }
+    }
+
+    fun consumeUndo() {
+        _undo.value = null
+    }
+
+    /** Undo for a dose in "Done today": back to pending, alarm comes back a minute later at the earliest. */
+    fun onReopenClicked(uiModel: OccurrenceUiModel) {
+        viewModelScope.launch {
+            occurrenceRepository.reopen(uiModel.occurrence.id)
+            recordUndo(uiModel.occurrence.id, uiModel.occurrence.status.name)
+            alarmCoordinator.reschedule("reopened_from_today")
+        }
+    }
+
+    /** "Taken after all" for a dose marked missed. */
+    fun onTakenAfterAll(uiModel: OccurrenceUiModel) {
+        viewModelScope.launch {
+            val now = System.currentTimeMillis()
+            occurrenceRepository.reopen(uiModel.occurrence.id, now = now, minDelayMillis = 0L)
+            occurrenceRepository.markOccurrenceTaken(uiModel.occurrence.id, now)
+            refillAlertNotifier?.checkAndNotify(uiModel.occurrence.itemId)
+            alarmCoordinator.reschedule("taken_after_missed")
+        }
+    }
+
+    /** Sets the time a dose was really taken, on the day it was taken. Never in the future. */
+    fun onChangeTakenTime(uiModel: OccurrenceUiModel, minuteOfDay: Int) {
+        viewModelScope.launch {
+            val occ = uiModel.occurrence
+            val zone = ZoneId.systemDefault()
+            val day = Instant.ofEpochMilli(occ.actedAt ?: occ.dueAt).atZone(zone).toLocalDate()
+            val picked = day.atStartOfDay(zone).plusMinutes(minuteOfDay.toLong()).toInstant().toEpochMilli()
+            val actedAt = minOf(picked, System.currentTimeMillis())
+            if (occurrenceRepository.changeTakenTime(occ.id, actedAt)) {
+                changeLogWriter.recordChange(
+                    entityType = "occurrence",
+                    entityId = occ.id,
+                    field = "actedAt",
+                    oldValue = occ.actedAt?.toString(),
+                    newValue = actedAt.toString(),
+                    changedAt = System.currentTimeMillis(),
+                    deviceId = settingsRepository.getOrCreateDeviceId()
+                )
+            }
+        }
+    }
+
+    private suspend fun recordUndo(occurrenceId: String, oldStatus: String) {
+        changeLogWriter.recordChange(
+            entityType = "occurrence",
+            entityId = occurrenceId,
+            field = "status_undone",
+            oldValue = oldStatus,
+            newValue = "PENDING",
+            changedAt = System.currentTimeMillis(),
+            deviceId = settingsRepository.getOrCreateDeviceId()
+        )
     }
 
     fun dismissDoubleDoseWarning() {
@@ -439,6 +518,7 @@ class TodayViewModel @Inject constructor(
                     updatedAt = now
                 )
             )
+            _undo.value = UndoInfo("${uiModel.item.name} skipped", uiModel.occurrence.id, uiModel.occurrence)
             changeLogWriter.recordChange(
                 entityType = "occurrence",
                 entityId = uiModel.occurrence.id,

@@ -50,11 +50,26 @@ fun TodayScreen(
     onEndMeal: (MealSession) -> Unit = {},
     onOccurrenceClick: (OccurrenceUiModel) -> Unit = {},
     onRetryReschedule: () -> Unit = {},
-    onRewardShown: () -> Unit = {}
+    onRewardShown: () -> Unit = {},
+    onUndo: () -> Unit = {},
+    onUndoShown: () -> Unit = {},
+    onReopen: (OccurrenceUiModel) -> Unit = {},
+    onTakenAfterAll: (OccurrenceUiModel) -> Unit = {},
+    onChangeTakenTime: (OccurrenceUiModel, Int) -> Unit = { _, _ -> }
 ) {
     var showMealDialog by remember { mutableStateOf(false) }
     var skippingOcc by remember { mutableStateOf<OccurrenceUiModel?>(null) }
     val snackbarHostState = remember { SnackbarHostState() }
+    LaunchedEffect(uiState.undo) {
+        val undo = uiState.undo ?: return@LaunchedEffect
+        val result = snackbarHostState.showSnackbar(
+            message = undo.message,
+            actionLabel = "Undo",
+            withDismissAction = true,
+            duration = SnackbarDuration.Long
+        )
+        if (result == SnackbarResult.ActionPerformed) onUndo() else onUndoShown()
+    }
     LaunchedEffect(uiState.rewardMessage) {
         val msg = uiState.rewardMessage
         if (msg != null) {
@@ -271,6 +286,9 @@ fun TodayScreen(
                         OccurrenceTimelineCard(
                             uiModel = occUi,
                             showProfileBadge = uiState.selectedProfileId == null,
+                            onReopen = { onReopen(occUi) },
+                            onTakenAfterAll = { onTakenAfterAll(occUi) },
+                            onChangeTakenTime = { minute -> onChangeTakenTime(occUi, minute) },
                             onTake = { onTake(occUi) },
                             onSnooze = { onSnooze(occUi) },
                             onSkip = { skippingOcc = occUi },
@@ -789,6 +807,9 @@ private fun OccurrenceTimelineCard(
     uiModel: OccurrenceUiModel,
     showProfileBadge: Boolean,
     isLate: Boolean = false,
+    onReopen: () -> Unit = {},
+    onTakenAfterAll: () -> Unit = {},
+    onChangeTakenTime: (Int) -> Unit = {},
     onTake: () -> Unit,
     onSnooze: () -> Unit,
     onSkip: () -> Unit,
@@ -867,6 +888,43 @@ private fun OccurrenceTimelineCard(
                 if (occ.status != OccurrenceStatus.PENDING) {
                     Spacer(modifier = Modifier.width(8.dp))
                     StatusChip(status = occ.status)
+                }
+            }
+
+            // Done doses: undo a mis-tap, correct the time taken, or log a missed dose after all.
+            if (occ.status in listOf(OccurrenceStatus.TAKEN, OccurrenceStatus.SKIPPED, OccurrenceStatus.MISSED)) {
+                var showTimePicker by remember { mutableStateOf(false) }
+                Spacer(modifier = Modifier.height(8.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    if (occ.status == OccurrenceStatus.MISSED) {
+                        FilledTonalButton(
+                            onClick = onTakenAfterAll,
+                            modifier = Modifier.defaultMinSize(minHeight = 44.dp)
+                        ) { Text("Taken after all") }
+                    } else {
+                        TextButton(
+                            onClick = onReopen,
+                            modifier = Modifier.defaultMinSize(minHeight = 44.dp)
+                        ) { Text("Undo") }
+                    }
+                    if (occ.status == OccurrenceStatus.TAKEN) {
+                        TextButton(
+                            onClick = { showTimePicker = true },
+                            modifier = Modifier.defaultMinSize(minHeight = 44.dp)
+                        ) { Text("Change time taken") }
+                    }
+                }
+                if (showTimePicker) {
+                    val zone = ZoneId.systemDefault()
+                    val acted = Instant.ofEpochMilli(occ.actedAt ?: occ.dueAt).atZone(zone)
+                    app.allinonereminder.ui.components.TimePickerDialog(
+                        initialMinuteOfDay = acted.hour * 60 + acted.minute,
+                        onConfirm = { minute ->
+                            showTimePicker = false
+                            onChangeTakenTime(minute)
+                        },
+                        onDismiss = { showTimePicker = false }
+                    )
                 }
             }
 

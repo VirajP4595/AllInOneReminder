@@ -375,31 +375,30 @@ fun ItemEditorScreen(
                         onSelect = onTimePolicyChange
                     )
 
-                    // Grace Minutes
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Column {
-                            Text("Count as missed after", fontWeight = FontWeight.SemiBold)
-                            Text("How long after the time a dose still counts as on time", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        }
-                        Text("${uiState.graceMinutes} min", fontWeight = FontWeight.Bold)
-                    }
-
-                    // Double-dose Min Gap
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Column {
-                            Text("Minimum time between doses", fontWeight = FontWeight.SemiBold)
-                            Text("Warns you if a dose is taken sooner than this", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        }
-                        Text("${uiState.minGapMinutes} min (${uiState.minGapMinutes / 60}h)", fontWeight = FontWeight.Bold)
-                    }
+                    TimingChoice(
+                        title = "Ring again every",
+                        subtitle = "If nobody answers the alarm",
+                        options = listOf(2, 5, 10, 15),
+                        selected = uiState.reRingMinutes,
+                        label = ::minutesLabel,
+                        onSelect = onReRingMinutesChange
+                    )
+                    TimingChoice(
+                        title = "Count as missed after",
+                        subtitle = "How long after the time a dose still counts",
+                        options = listOf(30, 60, 120, 240),
+                        selected = uiState.graceMinutes,
+                        label = ::minutesLabel,
+                        onSelect = onGraceMinutesChange
+                    )
+                    TimingChoice(
+                        title = "Minimum time between doses",
+                        subtitle = "Warns you if a dose is taken sooner than this",
+                        options = listOf(60, 120, 240, 480),
+                        selected = uiState.minGapMinutes,
+                        label = ::minutesLabel,
+                        onSelect = onMinGapMinutesChange
+                    )
                 }
             }
 
@@ -828,4 +827,36 @@ fun ItemEditorScreenPreview() {
             )
         )
     }
+}
+
+/** A labelled row of chips for one timing option; a non-standard current value is kept as a chip. */
+@Composable
+private fun TimingChoice(
+    title: String,
+    subtitle: String,
+    options: List<Int>,
+    selected: Int,
+    label: (Int) -> String,
+    onSelect: (Int) -> Unit
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Text(title, fontWeight = FontWeight.SemiBold)
+        Text(subtitle, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        val all = (options + selected).distinct().sorted()
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            all.forEach { value ->
+                app.allinonereminder.ui.components.ChoiceChip(
+                    selected = value == selected,
+                    onClick = { onSelect(value) },
+                    label = { Text(label(value)) }
+                )
+            }
+        }
+    }
+}
+
+private fun minutesLabel(minutes: Int): String = when {
+    minutes < 60 -> "$minutes min"
+    minutes % 60 == 0 -> "${minutes / 60} h"
+    else -> "${minutes / 60} h ${minutes % 60} min"
 }

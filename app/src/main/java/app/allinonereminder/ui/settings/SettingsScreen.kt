@@ -49,6 +49,8 @@ fun SettingsScreen(
     onUpdateSnooze: (Int) -> Unit = {},
     onUpdateRingDuration: (Int) -> Unit = {},
     onUpdateSpeakReminders: (Boolean) -> Unit = {},
+    onUpdateVibration: (Boolean) -> Unit = {},
+    onSetSound: (String, String) -> Unit = { _, _ -> },
     onRefreshHealthStatus: () -> Unit = {},
     onSetHealthVerification: (Boolean) -> Unit = {},
     onHealthPermissionResult: (Set<String>) -> Unit = {},
@@ -76,6 +78,35 @@ fun SettingsScreen(
     val healthPermissionLauncher = rememberLauncherForActivityResult(
         contract = PermissionController.createRequestPermissionResultContract()
     ) { granted -> onHealthPermissionResult(granted) }
+
+    var pickingSoundFor by remember { mutableStateOf<String?>(null) }
+    val ringtoneLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        val level = pickingSoundFor
+        pickingSoundFor = null
+        if (level != null && result.resultCode == android.app.Activity.RESULT_OK) {
+            @Suppress("DEPRECATION")
+            val picked = result.data?.getParcelableExtra<Uri>(android.media.RingtoneManager.EXTRA_RINGTONE_PICKED_URI)
+            onSetSound(level, picked?.toString() ?: "default")
+        }
+    }
+    fun pickSound(level: String, current: String) {
+        val isAlarm = level != "GENTLE"
+        val intent = android.content.Intent(android.media.RingtoneManager.ACTION_RINGTONE_PICKER).apply {
+            putExtra(
+                android.media.RingtoneManager.EXTRA_RINGTONE_TYPE,
+                if (isAlarm) android.media.RingtoneManager.TYPE_ALARM else android.media.RingtoneManager.TYPE_NOTIFICATION
+            )
+            putExtra(android.media.RingtoneManager.EXTRA_RINGTONE_SHOW_DEFAULT, true)
+            putExtra(android.media.RingtoneManager.EXTRA_RINGTONE_SHOW_SILENT, false)
+            putExtra(android.media.RingtoneManager.EXTRA_RINGTONE_TITLE, "Sound for ${soundLevelLabel(level).lowercase()} reminders")
+            val existing = current.takeIf { it.contains("://") }?.let { Uri.parse(it) }
+            putExtra(android.media.RingtoneManager.EXTRA_RINGTONE_EXISTING_URI, existing)
+        }
+        pickingSoundFor = level
+        runCatching { ringtoneLauncher.launch(intent) }.onFailure { pickingSoundFor = null }
+    }
 
     val createBackupLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.CreateDocument("application/octet-stream")
@@ -241,6 +272,62 @@ fun SettingsScreen(
                                     onClick = { onUpdateRingDuration(sec) },
                                     label = { Text(label) }
                                 )
+                            }
+                        }
+                    }
+
+                    HorizontalDivider()
+
+                    // Vibration
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .toggleable(
+                                value = uiState.vibrationEnabled,
+                                role = androidx.compose.ui.semantics.Role.Switch,
+                                onValueChange = onUpdateVibration
+                            ),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text("Vibrate when an alarm rings", fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
+                        Switch(checked = uiState.vibrationEnabled, onCheckedChange = null)
+                    }
+
+                    HorizontalDivider()
+
+                    // Sounds per importance level
+                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Text("Alarm sounds", fontWeight = FontWeight.SemiBold)
+                        Text(
+                            text = "Each item's importance (in the item editor) picks which sound it uses.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        listOf(
+                            "CRITICAL" to uiState.soundCritical,
+                            "NORMAL" to uiState.soundNormal,
+                            "GENTLE" to uiState.soundGentle
+                        ).forEach { (level, value) ->
+                            val title = remember(value) { soundTitle(context, value) }
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable(onClickLabel = "Change sound") { pickSound(level, value) }
+                                    .padding(vertical = 8.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(
+                                    if (level == "GENTLE") Icons.Default.NotificationsNone else Icons.Default.Alarm,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.primary
+                                )
+                                Spacer(modifier = Modifier.width(12.dp))
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(soundLevelLabel(level), style = MaterialTheme.typography.bodyLarge)
+                                    Text(title, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                }
+                                Icon(Icons.Default.ChevronRight, contentDescription = null)
                             }
                         }
                     }
@@ -641,4 +728,18 @@ fun SettingsScreenPreview() {
             )
         )
     }
+}
+
+private fun soundLevelLabel(level: String): String = when (level) {
+    "CRITICAL" -> "Must not miss"
+    "GENTLE" -> "Gentle"
+    else -> "Normal"
+}
+
+/** Human title of a stored sound value ("Phone default" for the default or an unreadable URI). */
+private fun soundTitle(context: android.content.Context, value: String): String {
+    if (!value.contains("://")) return "Phone default"
+    return runCatching {
+        android.media.RingtoneManager.getRingtone(context, Uri.parse(value))?.getTitle(context)
+    }.getOrNull() ?: "Phone default"
 }
