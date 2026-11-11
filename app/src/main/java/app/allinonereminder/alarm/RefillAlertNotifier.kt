@@ -65,6 +65,16 @@ class RefillAlertNotifier @Inject constructor(
             .setContentText(statusText)
             .setPriority(NotificationCompat.PRIORITY_DEFAULT)
             .setAutoCancel(true)
+            // The medicine name stays off a secure lock screen (channel settings are fixed once
+            // created, so this is set per notification).
+            .setVisibility(NotificationCompat.VISIBILITY_PRIVATE)
+            .setPublicVersion(
+                NotificationCompat.Builder(context, AlarmNotificationHelper.CHANNEL_REFILL)
+                    .setSmallIcon(R.drawable.ic_stat_alarm)
+                    .setContentTitle("Refill reminder")
+                    .setContentText("A medicine is running low")
+                    .build()
+            )
             .build()
 
         try {

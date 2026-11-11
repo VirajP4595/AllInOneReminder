@@ -53,6 +53,17 @@ class BackupManager @Inject constructor(
         const val IV_LENGTH_BYTES = 12
         const val GCM_TAG_LENGTH_BITS = 128
         const val MAX_BACKUP_SIZE_BYTES = 50 * 1024 * 1024 // 50MB safety cap per §18 review C3
+
+        /** Caps on what a backup may expand to, so a crafted archive cannot fill storage or memory. */
+        const val MAX_EXTRACTED_BYTES = 300L * 1024 * 1024
+        const val MAX_JSON_BYTES = 30L * 1024 * 1024
+
+        /** A plain file name from an archive path, or null if it is empty or tries to leave the folder. */
+        internal fun safeArchiveFileName(rawPath: String): String? {
+            val name = rawPath.substringAfterLast('/').substringAfterLast('\\')
+            if (name.isBlank() || name == "." || name == ".." || name.contains("..")) return null
+            return name
+        }
     }
 
     suspend fun createBackup(outputStream: OutputStream, passphrase: CharArray) = withContext(Dispatchers.IO) {
@@ -166,12 +177,13 @@ class BackupManager @Inject constructor(
 
         try {
             var photoCount = 0
+            var extractedBytes = 0L
 
             ZipInputStream(ByteArrayInputStream(decryptedZipBytes)).use { zis ->
                 var entry: ZipEntry? = zis.nextEntry
                 while (entry != null) {
                     if (entry.name == "backup.json") {
-                        val jsonStr = zis.bufferedReader(Charsets.UTF_8).readText()
+                        val jsonStr = readBoundedText(zis, MAX_JSON_BYTES)
                         rootJson = JSONObject(jsonStr)
                     } else if (entry.name.startsWith("photos/") && !entry.isDirectory) {
                         val fileName = entry.name.removePrefix("photos/")
@@ -184,7 +196,7 @@ class BackupManager @Inject constructor(
                             throw InvalidBackupFileException("Zip Slip detected: target outside photo dir: ${tempFile.canonicalPath}")
                         }
                         FileOutputStream(tempFile).use { fos ->
-                            zis.copyTo(fos)
+                            extractedBytes += copyBounded(zis, fos, MAX_EXTRACTED_BYTES - extractedBytes)
                         }
                         photoCount++
                     } else if (entry.name.startsWith("attachments/") && !entry.isDirectory) {
@@ -197,7 +209,7 @@ class BackupManager @Inject constructor(
                             throw InvalidBackupFileException("Zip Slip detected: target outside attachment dir: ${tempFile.canonicalPath}")
                         }
                         FileOutputStream(tempFile).use { fos ->
-                            zis.copyTo(fos)
+                            extractedBytes += copyBounded(zis, fos, MAX_EXTRACTED_BYTES - extractedBytes)
                         }
                     }
                     zis.closeEntry()
@@ -362,7 +374,7 @@ class BackupManager @Inject constructor(
             var entry: ZipEntry? = zis.nextEntry
             while (entry != null) {
                 if (entry.name == "backup.json") {
-                    val jsonStr = zis.bufferedReader(Charsets.UTF_8).readText()
+                    val jsonStr = readBoundedText(zis, MAX_JSON_BYTES)
                     rootJson = JSONObject(jsonStr)
                 } else if (entry.name.startsWith("photos/") && !entry.isDirectory) {
                     photoCount++
@@ -512,13 +524,11 @@ class BackupManager @Inject constructor(
         val list = mutableListOf<ItemPhotoEntity>()
         for (i in 0 until array.length()) {
             val o = array.getJSONObject(i)
-            val rawPath = o.getString("filePath")
-            // Resolve relative path against current device filesDir
-            val resolvedPath = if (rawPath.startsWith("photos/")) {
-                File(context.filesDir, rawPath).absolutePath
-            } else {
-                rawPath
-            }
+            // Never trust a path from the file: keep only a plain file name and rebuild the path
+            // under our own photos folder (blocks "photos/../databases/..." and similar).
+            val safeName = safeArchiveFileName(o.getString("filePath"))
+                ?: throw InvalidBackupFileException("Invalid photo path in backup")
+            val resolvedPath = File(File(context.filesDir, "photos"), safeName).absolutePath
             list.add(
                 ItemPhotoEntity(
                     id = o.getString("id"),
@@ -873,12 +883,10 @@ class BackupManager @Inject constructor(
         val list = mutableListOf<AppointmentAttachmentEntity>()
         for (i in 0 until array.length()) {
             val o = array.getJSONObject(i)
-            val rawPath = o.getString("filePath")
-            val resolvedPath = if (rawPath.startsWith("attachments/")) {
-                File(context.filesDir, rawPath).absolutePath
-            } else {
-                rawPath
-            }
+            // Attachments are stored by file name only (see AttachmentStorageHelper); storing a full
+            // path here broke opening restored attachments and allowed "../" paths.
+            val resolvedPath = safeArchiveFileName(o.getString("filePath"))
+                ?: throw InvalidBackupFileException("Invalid attachment path in backup")
             list.add(
                 AppointmentAttachmentEntity(
                     id = o.getString("id"),
@@ -890,6 +898,26 @@ class BackupManager @Inject constructor(
             )
         }
         return list
+    }
+
+    /** Copies at most [budget] bytes; throws if the entry is larger (zip bomb guard). */
+    private fun copyBounded(input: InputStream, output: java.io.OutputStream, budget: Long): Long {
+        val buffer = ByteArray(16 * 1024)
+        var total = 0L
+        while (true) {
+            val n = input.read(buffer)
+            if (n < 0) break
+            total += n
+            if (total > budget) throw InvalidBackupFileException("Backup expands beyond the safe size limit")
+            output.write(buffer, 0, n)
+        }
+        return total
+    }
+
+    private fun readBoundedText(input: InputStream, limit: Long): String {
+        val out = java.io.ByteArrayOutputStream()
+        copyBounded(input, out, limit)
+        return out.toString(Charsets.UTF_8.name())
     }
 }
 
