@@ -88,7 +88,7 @@ class CsvExporter @Inject constructor(
 
     private fun write(out: OutputStream, header: List<String>, rows: List<List<String>>) {
         val writer = out.bufferedWriter(Charsets.UTF_8)
-        writer.write("﻿") // so Excel opens UTF-8 (e.g. Hindi names) correctly
+        writer.write(0xFEFF) // byte-order mark, so Excel opens UTF-8 (e.g. Hindi names) correctly
         writer.write(header.joinToString(",") { escape(it) })
         writer.write("\r\n")
         rows.forEach { row ->
