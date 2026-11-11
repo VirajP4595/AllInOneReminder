@@ -204,12 +204,7 @@ private fun ProfileCard(
 }
 
 private fun formatAnchorTime(mod: Int?): String {
-    if (mod == null) return "08:00 AM"
-    val h = mod / 60
-    val m = mod % 60
-    val ampm = if (h >= 12) "PM" else "AM"
-    val h12 = if (h % 12 == 0) 12 else h % 12
-    return String.format("%d:%02d %s", h12, m, ampm)
+    return app.allinonereminder.ui.components.AppTime.format(mod ?: 8 * 60)
 }
 
 private fun createDefaultAnchors(profileId: String): List<MealAnchor> {

@@ -352,7 +352,7 @@ fun ItemEditorScreen(
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
                 Text(
-                    text = "Advanced Timing & Guards",
+                    text = "More timing options",
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold
                 )
@@ -365,7 +365,7 @@ fun ItemEditorScreen(
             AnimatedVisibility(visible = showAdvanced) {
                 Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     // Time Policy
-                    Text("Timezone Policy", fontWeight = FontWeight.SemiBold)
+                    Text("When travelling, ring by", fontWeight = FontWeight.SemiBold)
                     SegmentedChoice(
                         options = listOf(
                             TimePolicy.LOCAL_WALL_CLOCK to "Local time",
@@ -382,8 +382,8 @@ fun ItemEditorScreen(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Column {
-                            Text("Grace Period", fontWeight = FontWeight.SemiBold)
-                            Text("Mark missed after this window", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text("Count as missed after", fontWeight = FontWeight.SemiBold)
+                            Text("How long after the time a dose still counts as on time", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                         Text("${uiState.graceMinutes} min", fontWeight = FontWeight.Bold)
                     }
@@ -395,8 +395,8 @@ fun ItemEditorScreen(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Column {
-                            Text("Double-Dose Guard Gap", fontWeight = FontWeight.SemiBold)
-                            Text("Warn if taken closer than this interval", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text("Minimum time between doses", fontWeight = FontWeight.SemiBold)
+                            Text("Warns you if a dose is taken sooner than this", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                         Text("${uiState.minGapMinutes} min (${uiState.minGapMinutes / 60}h)", fontWeight = FontWeight.Bold)
                     }
@@ -447,36 +447,17 @@ private fun ScheduleDraftCard(
             }
 
             if (draft.anchorType == ScheduleAnchorType.FIXED) {
-                val hour = draft.minuteOfDay / 60
-                val min = draft.minuteOfDay % 60
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text("Time of Day", style = MaterialTheme.typography.bodyMedium)
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        IconButton(onClick = {
-                            val newMod = (draft.minuteOfDay - 30 + 1440) % 1440
-                            onUpdate { it.copy(minuteOfDay = newMod) }
-                        }) {
-                            Icon(Icons.Default.Remove, contentDescription = "-30m")
-                        }
-                        val ampm = if (hour >= 12) "PM" else "AM"
-                        val hour12 = if (hour % 12 == 0) 12 else hour % 12
-                        Text(
-                            text = String.format("%d:%02d %s", hour12, min, ampm),
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 18.sp,
-                            modifier = Modifier.padding(horizontal = 8.dp)
-                        )
-                        IconButton(onClick = {
-                            val newMod = (draft.minuteOfDay + 30) % 1440
-                            onUpdate { it.copy(minuteOfDay = newMod) }
-                        }) {
-                            Icon(Icons.Default.Add, contentDescription = "+30m")
-                        }
-                    }
+                    Text("Time of day", style = MaterialTheme.typography.bodyMedium)
+                    app.allinonereminder.ui.components.TimeChip(
+                        minuteOfDay = draft.minuteOfDay,
+                        onChange = { newMod -> onUpdate { it.copy(minuteOfDay = newMod) } },
+                        contentDescription = "Change reminder time"
+                    )
                 }
             } else {
                 // Meal Relative options
@@ -707,20 +688,16 @@ private fun ScheduleDraftCard(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                AppTextField(
-                    value = draft.validFrom ?: "",
-                    onValueChange = { value -> onUpdate { it.copy(validFrom = value.ifBlank { null }) } },
-                    label = { Text("From") },
-                    placeholder = { Text("YYYY-MM-DD") },
-                    singleLine = true,
+                app.allinonereminder.ui.components.DateChip(
+                    label = "From",
+                    isoDate = draft.validFrom,
+                    onChange = { value -> onUpdate { it.copy(validFrom = value) } },
                     modifier = Modifier.weight(1f)
                 )
-                AppTextField(
-                    value = draft.validUntil ?: "",
-                    onValueChange = { value -> onUpdate { it.copy(validUntil = value.ifBlank { null }) } },
-                    label = { Text("Until") },
-                    placeholder = { Text("YYYY-MM-DD") },
-                    singleLine = true,
+                app.allinonereminder.ui.components.DateChip(
+                    label = "Until",
+                    isoDate = draft.validUntil,
+                    onChange = { value -> onUpdate { it.copy(validUntil = value) } },
                     modifier = Modifier.weight(1f)
                 )
             }

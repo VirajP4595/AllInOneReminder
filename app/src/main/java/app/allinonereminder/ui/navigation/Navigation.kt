@@ -210,7 +210,7 @@ fun MainAppNavigation(
                     onDismissAsNeededWarning = viewModel::dismissAsNeededWarning,
                     onDismissAsNeededLimit = viewModel::dismissAsNeededLimit,
                     onDismissDoubleDoseWarning = viewModel::dismissDoubleDoseWarning,
-                    onSnooze = { viewModel.onSnoozeClicked(it, 10) },
+                    onSnooze = { viewModel.onSnoozeClicked(it) },
                     onSkip = { occ, reason -> viewModel.onSkipClicked(occ, reason) },
                     onFixExactAlarm = {
                         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {

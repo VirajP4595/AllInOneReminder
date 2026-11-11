@@ -496,7 +496,7 @@ private fun TodayHero(
     val subline = when {
         allDone -> "Great job. See you tomorrow."
         nextAlarmEpochMillis != null -> "Next at " + Instant.ofEpochMilli(nextAlarmEpochMillis)
-            .atZone(ZoneId.systemDefault()).format(DateTimeFormatter.ofPattern("h:mm a"))
+            .atZone(ZoneId.systemDefault()).format(app.allinonereminder.ui.components.AppTime.formatter())
         total == 0 -> "Add a reminder from Items."
         else -> "Nothing else scheduled."
     }
@@ -797,7 +797,7 @@ private fun OccurrenceTimelineCard(
     val occ = uiModel.occurrence
     val item = uiModel.item
     val dueTime = Instant.ofEpochMilli(occ.dueAt).atZone(ZoneId.systemDefault())
-    val formattedTime = dueTime.format(DateTimeFormatter.ofPattern("h:mm a"))
+    val formattedTime = dueTime.format(app.allinonereminder.ui.components.AppTime.formatter())
 
     Card(
         modifier = Modifier
@@ -1022,13 +1022,13 @@ private fun AsNeededCard(
 private fun StatusChip(status: OccurrenceStatus) {
     val (bgColor, textColor, text) = when (status) {
         OccurrenceStatus.PENDING -> Triple(MaterialTheme.colorScheme.surfaceVariant, MaterialTheme.colorScheme.onSurfaceVariant, "Pending")
-        OccurrenceStatus.RINGING -> Triple(Color(0xFFFFCDD2), Color(0xFFB71C1C), "Ringing")
-        OccurrenceStatus.TAKEN -> Triple(Color(0xFFE8F5E9), Color(0xFF2E7D32), "Taken")
-        OccurrenceStatus.SNOOZED -> Triple(Color(0xFFFFF8E1), Color(0xFFF57F17), "Snoozed")
-        OccurrenceStatus.DEFERRED_MEAL -> Triple(Color(0xFFE0F7FA), Color(0xFF00838F), "After Meal")
-        OccurrenceStatus.MISSED -> Triple(Color(0xFFFFEBEE), Color(0xFFC62828), "Missed")
-        OccurrenceStatus.SKIPPED -> Triple(Color(0xFFEEEEEE), Color(0xFF616161), "Skipped")
-        OccurrenceStatus.SUPERSEDED -> Triple(Color(0xFFEEEEEE), Color(0xFF9E9E9E), "Superseded")
+        OccurrenceStatus.RINGING -> Triple(MaterialTheme.colorScheme.errorContainer, MaterialTheme.colorScheme.onErrorContainer, "Ringing")
+        OccurrenceStatus.TAKEN -> Triple(MaterialTheme.colorScheme.primaryContainer, MaterialTheme.colorScheme.onPrimaryContainer, "Taken")
+        OccurrenceStatus.SNOOZED -> Triple(MaterialTheme.colorScheme.tertiaryContainer, MaterialTheme.colorScheme.onTertiaryContainer, "Snoozed")
+        OccurrenceStatus.DEFERRED_MEAL -> Triple(MaterialTheme.colorScheme.secondaryContainer, MaterialTheme.colorScheme.onSecondaryContainer, "After meal")
+        OccurrenceStatus.MISSED -> Triple(MaterialTheme.colorScheme.errorContainer, MaterialTheme.colorScheme.onErrorContainer, "Missed")
+        OccurrenceStatus.SKIPPED -> Triple(MaterialTheme.colorScheme.surfaceVariant, MaterialTheme.colorScheme.onSurfaceVariant, "Skipped")
+        OccurrenceStatus.SUPERSEDED -> Triple(MaterialTheme.colorScheme.surfaceVariant, MaterialTheme.colorScheme.outline, "Replaced")
     }
 
     Surface(
@@ -1051,7 +1051,7 @@ private fun ActiveMealSessionCard(
     onDoneEating: () -> Unit
 ) {
     val mealName = session.meal.name.lowercase().replaceFirstChar { it.uppercase() }
-    val timeFormatter = DateTimeFormatter.ofPattern("h:mm a").withZone(ZoneId.systemDefault())
+    val timeFormatter = app.allinonereminder.ui.components.AppTime.formatter().withZone(ZoneId.systemDefault())
     val startedStr = timeFormatter.format(Instant.ofEpochMilli(session.startedAt))
 
     Card(

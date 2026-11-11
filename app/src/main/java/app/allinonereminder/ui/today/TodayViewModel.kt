@@ -405,10 +405,12 @@ class TodayViewModel @Inject constructor(
         }
     }
 
-    fun onSnoozeClicked(uiModel: OccurrenceUiModel, minutes: Int = 10) {
+    /** Snoozes for [minutes], or for the user's default snooze from Settings when null. */
+    fun onSnoozeClicked(uiModel: OccurrenceUiModel, minutes: Int? = null) {
         viewModelScope.launch {
+            val snoozeMinutes = minutes ?: settingsRepository.settingsFlow.first().defaultSnoozeMinutes
             val now = System.currentTimeMillis()
-            val newDue = now + minutes * 60_000L
+            val newDue = now + snoozeMinutes * 60_000L
             // Stop ringing service if item was ringing
             AlarmRingService.stopForOccurrence(context, uiModel.occurrence.id)
 

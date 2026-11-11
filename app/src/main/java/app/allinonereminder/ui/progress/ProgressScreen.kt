@@ -1,5 +1,6 @@
 package app.allinonereminder.ui.progress
 
+import app.allinonereminder.ui.today.POINTS_PER_LEVEL
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -51,7 +52,6 @@ fun ProgressScreen(
     )
 }
 
-private const val POINTS_PER_LEVEL = 100
 
 private fun levelTitle(level: Int): String = when (level) {
     1 -> "Getting started"
@@ -157,7 +157,7 @@ fun ProgressContent(
                     Text(
                         text = "Medicines: 5 points when taken within 30 minutes of the time.\n" +
                             "Water, exercise and habits: 10 points on time, 5 if a little late.\n" +
-                            "Every 100 points is a new level. Miss a day? One streak freeze a week keeps your streak alive.",
+                            "Every $POINTS_PER_LEVEL points is a new level. Miss a day? One streak freeze a week keeps your streak alive.",
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )

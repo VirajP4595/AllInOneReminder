@@ -10,6 +10,8 @@ import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -20,6 +22,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ChevronRight
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Remove
 import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material3.Card
@@ -287,10 +290,6 @@ fun TimeChip(
     modifier: Modifier = Modifier
 ) {
     var showDialog by remember { mutableStateOf(false) }
-    val hour = (minuteOfDay / 60) % 24
-    val minute = minuteOfDay % 60
-    val ampm = if (hour >= 12) "PM" else "AM"
-    val hour12 = if (hour % 12 == 0) 12 else hour % 12
     Row(
         modifier = modifier
             .clip(CircleShape)
@@ -307,7 +306,7 @@ fun TimeChip(
         )
         Spacer(modifier = Modifier.width(8.dp))
         Text(
-            text = String.format("%d:%02d %s", hour12, minute, ampm),
+            text = AppTime.format(minuteOfDay),
             style = MaterialTheme.typography.titleMedium,
             color = MaterialTheme.colorScheme.onPrimaryContainer
         )
@@ -334,7 +333,7 @@ fun TimePickerDialog(
     val state = rememberTimePickerState(
         initialHour = (initialMinuteOfDay / 60) % 24,
         initialMinute = initialMinuteOfDay % 60,
-        is24Hour = false
+        is24Hour = AppTime.is24Hour
     )
     Dialog(onDismissRequest = onDismiss) {
         Surface(
@@ -441,4 +440,123 @@ fun AppCard(
         elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
         content = content
     )
+}
+
+/** Snooze durations offered everywhere (Settings default, alarm screen). Minutes. */
+val SNOOZE_CHOICES = listOf(5, 10, 15, 30, 60)
+
+/** Longest custom snooze allowed, in minutes. */
+const val MAX_CUSTOM_SNOOZE_MINUTES = 240
+
+/** Pick a snooze length: the shared list plus a custom number of minutes (1 to 240). */
+@Composable
+fun SnoozeChoiceDialog(
+    onDismiss: () -> Unit,
+    onSelect: (Int) -> Unit
+) {
+    var custom by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf("") }
+    val customMinutes = custom.toIntOrNull()?.takeIf { it in 1..MAX_CUSTOM_SNOOZE_MINUTES }
+    androidx.compose.material3.AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Snooze for") },
+        text = {
+            Column {
+                for (min in SNOOZE_CHOICES) {
+                    androidx.compose.material3.TextButton(
+                        onClick = { onSelect(min) },
+                        modifier = Modifier.fillMaxWidth().defaultMinSize(minHeight = 48.dp)
+                    ) {
+                        Text(snoozeLabel(min), modifier = Modifier.fillMaxWidth(), style = MaterialTheme.typography.bodyLarge)
+                    }
+                }
+                Spacer(modifier = Modifier.height(8.dp))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    AppTextField(
+                        value = custom,
+                        onValueChange = { v -> custom = v.filter { it.isDigit() }.take(3) },
+                        label = { Text("Custom (minutes)") },
+                        singleLine = true,
+                        keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
+                            keyboardType = androidx.compose.ui.text.input.KeyboardType.Number
+                        ),
+                        modifier = Modifier.weight(1f)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    androidx.compose.material3.Button(
+                        onClick = { customMinutes?.let(onSelect) },
+                        enabled = customMinutes != null
+                    ) { Text("Snooze") }
+                }
+            }
+        },
+        confirmButton = {},
+        dismissButton = {
+            androidx.compose.material3.TextButton(onClick = onDismiss) { Text("Cancel") }
+        }
+    )
+}
+
+/** "5 minutes", "1 hour", "1 h 30 min". */
+fun snoozeLabel(minutes: Int): String = when {
+    minutes < 60 -> "$minutes minutes"
+    minutes % 60 == 0 -> if (minutes == 60) "1 hour" else "${minutes / 60} hours"
+    else -> "${minutes / 60} h ${minutes % 60} min"
+}
+
+/**
+ * A date field that opens the Material date picker. [isoDate] is "YYYY-MM-DD" or null (no limit);
+ * the clear button sets it back to null.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun DateChip(
+    label: String,
+    isoDate: String?,
+    onChange: (String?) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    var showPicker by remember { mutableStateOf(false) }
+    val date = isoDate?.let { runCatching { java.time.LocalDate.parse(it) }.getOrNull() }
+    val shown = date?.format(java.time.format.DateTimeFormatter.ofPattern("d MMM yyyy")) ?: "Any date"
+    Surface(
+        modifier = modifier,
+        shape = MaterialTheme.shapes.medium,
+        color = MaterialTheme.colorScheme.surfaceContainerHigh,
+        onClick = { showPicker = true }
+    ) {
+        Row(
+            modifier = Modifier.padding(start = 12.dp, top = 8.dp, bottom = 8.dp, end = 4.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(label, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(shown, style = MaterialTheme.typography.bodyLarge)
+            }
+            if (date != null) {
+                IconButton(onClick = { onChange(null) }) {
+                    Icon(androidx.compose.material.icons.Icons.Default.Close, contentDescription = "Clear $label date")
+                }
+            }
+        }
+    }
+    if (showPicker) {
+        val initialMillis = (date ?: java.time.LocalDate.now())
+            .atStartOfDay(java.time.ZoneOffset.UTC).toInstant().toEpochMilli()
+        val state = androidx.compose.material3.rememberDatePickerState(initialSelectedDateMillis = initialMillis)
+        androidx.compose.material3.DatePickerDialog(
+            onDismissRequest = { showPicker = false },
+            confirmButton = {
+                TextButton(onClick = {
+                    state.selectedDateMillis?.let { millis ->
+                        val picked = java.time.Instant.ofEpochMilli(millis).atZone(java.time.ZoneOffset.UTC).toLocalDate()
+                        onChange(picked.toString())
+                    }
+                    showPicker = false
+                }) { Text("OK") }
+            },
+            dismissButton = { TextButton(onClick = { showPicker = false }) { Text("Cancel") } }
+        ) {
+            androidx.compose.material3.DatePicker(state = state)
+        }
+    }
 }

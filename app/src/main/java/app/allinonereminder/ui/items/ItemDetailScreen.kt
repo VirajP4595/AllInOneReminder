@@ -472,7 +472,7 @@ fun ItemDetailScreen(
 @Composable
 private fun OccurrenceHistoryRow(occ: Occurrence) {
     val planned = Instant.ofEpochMilli(occ.plannedAt).atZone(ZoneId.systemDefault())
-    val formattedDate = planned.format(DateTimeFormatter.ofPattern("MMM dd, hh:mm a"))
+    val formattedDate = planned.format(DateTimeFormatter.ofPattern("MMM dd, " + app.allinonereminder.ui.components.AppTime.timePattern()))
     val actedAt = occ.actedAt
 
     Card(
@@ -491,7 +491,7 @@ private fun OccurrenceHistoryRow(occ: Occurrence) {
                 if (actedAt != null) {
                     val actedTime = Instant.ofEpochMilli(actedAt).atZone(ZoneId.systemDefault())
                     Text(
-                        text = "Acted: ${actedTime.format(DateTimeFormatter.ofPattern("hh:mm a"))}",
+                        text = "Acted: ${actedTime.format(app.allinonereminder.ui.components.AppTime.formatter())}",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -526,7 +526,7 @@ private fun OccurrenceHistoryRow(occ: Occurrence) {
 @Composable
 private fun ChangeLogRow(log: ChangeLog) {
     val time = Instant.ofEpochMilli(log.changedAt).atZone(ZoneId.systemDefault())
-    val formatted = time.format(DateTimeFormatter.ofPattern("MMM dd, HH:mm"))
+    val formatted = time.format(DateTimeFormatter.ofPattern("MMM dd, " + app.allinonereminder.ui.components.AppTime.timePattern()))
 
     Row(
         modifier = Modifier

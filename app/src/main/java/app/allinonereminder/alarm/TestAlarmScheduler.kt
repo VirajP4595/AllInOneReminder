@@ -80,6 +80,6 @@ class TestAlarmScheduler @Inject constructor(
             deviceId
         )
         alarmCoordinator.reschedule("test_alarm")
-        return "Test alarm set for ${planned.format(DateTimeFormatter.ofPattern("HH:mm"))}. Lock the screen or open another app and wait."
+        return "Test alarm set for ${planned.format(app.allinonereminder.ui.components.AppTime.formatter())}. Lock the screen or open another app and wait."
     }
 }

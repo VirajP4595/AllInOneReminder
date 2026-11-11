@@ -213,7 +213,7 @@ fun SettingsScreen(
                         Text("Default Snooze Duration", fontWeight = FontWeight.SemiBold)
                         Spacer(modifier = Modifier.height(6.dp))
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            listOf(5, 10, 15, 20).forEach { mins ->
+                            SNOOZE_CHOICES.forEach { mins ->
                                 ChoiceChip(
                                     selected = uiState.defaultSnoozeMinutes == mins,
                                     onClick = { onUpdateSnooze(mins) },
@@ -412,17 +412,22 @@ fun SettingsScreen(
                 }
             }
 
-            // Developer / Debug Helpers
-            Text("Debug Tools", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(top = 8.dp))
-            OutlinedButton(
-                onClick = onSeedData,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .defaultMinSize(minHeight = 48.dp)
-            ) {
-                Icon(Icons.Default.DataObject, contentDescription = null)
-                Spacer(modifier = Modifier.width(8.dp))
-                Text("Seed Sample Multi-Profile Data")
+            // Developer helpers: only in debuggable (debug) builds, never in the release APK.
+            val isDebuggable = remember(context) {
+                (context.applicationInfo.flags and android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE) != 0
+            }
+            if (isDebuggable) {
+                Text("Debug Tools", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(top = 8.dp))
+                OutlinedButton(
+                    onClick = onSeedData,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .defaultMinSize(minHeight = 48.dp)
+                ) {
+                    Icon(Icons.Default.DataObject, contentDescription = null)
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Seed Sample Multi-Profile Data")
+                }
             }
 
             Spacer(modifier = Modifier.height(8.dp))
@@ -441,7 +446,11 @@ fun SettingsScreen(
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                     Spacer(modifier = Modifier.height(12.dp))
-                    Text("Version 0.1.0-alpha (Offline MVP Phase 1)", style = MaterialTheme.typography.labelSmall)
+                    val versionName = remember(context) {
+                        runCatching { context.packageManager.getPackageInfo(context.packageName, 0).versionName }
+                            .getOrNull() ?: "?"
+                    }
+                    Text("Version $versionName", style = MaterialTheme.typography.labelSmall)
                 }
             }
         }

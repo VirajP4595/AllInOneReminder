@@ -38,7 +38,7 @@ fun AppointmentsScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Appointments", fontWeight = FontWeight.Bold) }
+                title = { Text("Visits", fontWeight = FontWeight.Bold) }
             )
         },
         floatingActionButton = {
@@ -160,7 +160,7 @@ fun AppointmentCard(
     val appt = uiModel.appointment
     val zdt = Instant.ofEpochMilli(appt.startAt).atZone(ZoneId.systemDefault())
     val dateFormatter = DateTimeFormatter.ofPattern("EEE, MMM d, yyyy")
-    val timeFormatter = DateTimeFormatter.ofPattern("hh:mm a")
+    val timeFormatter = app.allinonereminder.ui.components.AppTime.formatter()
 
     Card(
         modifier = Modifier
