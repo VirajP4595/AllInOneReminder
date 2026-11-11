@@ -102,4 +102,14 @@ val MIGRATION_4_5 = object : Migration(4, 5) {
     }
 }
 
-
+/** v6: expiry date and category on items, on/off cycles and weekend shift on schedules, who marked a dose. */
+val MIGRATION_5_6 = object : Migration(5, 6) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE item ADD COLUMN expiryDate TEXT")
+        db.execSQL("ALTER TABLE item ADD COLUMN category TEXT")
+        db.execSQL("ALTER TABLE schedule ADD COLUMN cycleOnDays INTEGER")
+        db.execSQL("ALTER TABLE schedule ADD COLUMN cycleOffDays INTEGER")
+        db.execSQL("ALTER TABLE schedule ADD COLUMN weekendShiftMinutes INTEGER")
+        db.execSQL("ALTER TABLE occurrence ADD COLUMN markedBy TEXT")
+    }
+}

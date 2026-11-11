@@ -858,6 +858,14 @@ class MealFlowsAndGuardsTest {
 
         // When Mom explicitly starts lunch, Mom gets a session, Dad's medicines are NOT re-timed
         todayViewModel.onStartMealNow(MealType.LUNCH, targetProfileId = mom.id)
+        // Room runs on its own threads, so wait for the session (and the reschedule) to land.
+        for (i in 0 until 50) {
+            testDispatcher.scheduler.advanceUntilIdle()
+            ShadowLooper.idleMainLooper()
+            if (mealSessionRepo.getActiveSessionSync(mom.id) != null) break
+            Thread.sleep(10)
+        }
+        Thread.sleep(50)
         testDispatcher.scheduler.advanceUntilIdle()
         ShadowLooper.idleMainLooper()
         assertThat(mealSessionRepo.getActiveSessionSync(mom.id)).isNotNull()

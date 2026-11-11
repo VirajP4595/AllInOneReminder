@@ -100,6 +100,8 @@ data class ItemEntity(
     val unitsPerDose: Double? = 1.0,
     val refillThreshold: Double? = null,
     val appointmentId: String? = null,
+    val expiryDate: String? = null,
+    val category: String? = null,
     val active: Boolean = true,
     val createdAt: Long,
     val updatedAt: Long,
@@ -166,6 +168,9 @@ data class ScheduleEntity(
     val validFrom: String? = null,
     val validUntil: String? = null,
     val doseAmountOverride: String? = null,
+    val cycleOnDays: Int? = null,
+    val cycleOffDays: Int? = null,
+    val weekendShiftMinutes: Int? = null,
     val createdAt: Long,
     val updatedAt: Long,
     val deletedAt: Long? = null
@@ -195,6 +200,7 @@ data class OccurrenceEntity(
     val actedAt: Long? = null,
     val skipReason: String? = null,
     val note: String? = null,
+    val markedBy: String? = null,
     val deviceId: String,
     val updatedAt: Long
 )

@@ -20,6 +20,13 @@ import javax.inject.Inject
 
 data class SettingsUiState(
     val themeMode: String = "system",
+    val weekendDays: Set<Int> = setOf(6, 7),
+    val caregiverName: String = "",
+    val profiles: List<app.allinonereminder.model.Profile> = emptyList(),
+    val pointsHidden: Set<String> = emptySet(),
+    val quietHours: Map<String, Pair<Int, Int>> = emptyMap(),
+    val speechLanguages: Map<String, String> = emptyMap(),
+    val todayLayout: String = "time",
     val defaultSnoozeMinutes: Int = 10,
     val ringDurationSeconds: Int = 120,
     val vibrationEnabled: Boolean = true,
@@ -43,7 +50,10 @@ class SettingsViewModel @Inject constructor(
     @ApplicationContext private val context: Context,
     private val settingsRepository: SettingsRepository,
     private val backupManager: BackupManager,
-    private val activitySource: ActivitySource
+    private val activitySource: ActivitySource,
+    private val alarmCoordinator: app.allinonereminder.alarm.AlarmCoordinator,
+    private val csvExporter: app.allinonereminder.backup.CsvExporter,
+    private val profileRepository: app.allinonereminder.data.repository.ProfileRepository
 ) : ViewModel() {
 
     private val _isProcessing = MutableStateFlow(false)
@@ -79,6 +89,20 @@ class SettingsViewModel @Inject constructor(
         state.copy(healthAvailability = health.first, healthPermissionGranted = health.second)
     }.combine(settingsRepository.themeModeFlow) { state, mode ->
         state.copy(themeMode = mode)
+    }.combine(settingsRepository.weekendDaysFlow) { state, days ->
+        state.copy(weekendDays = days)
+    }.combine(settingsRepository.caregiverNameFlow) { state, name ->
+        state.copy(caregiverName = name ?: "")
+    }.combine(profileRepository.getActiveProfiles()) { state, profiles ->
+        state.copy(profiles = profiles)
+    }.combine(settingsRepository.pointsHiddenFlow) { state, hidden ->
+        state.copy(pointsHidden = hidden)
+    }.combine(settingsRepository.quietHoursFlow) { state, quiet ->
+        state.copy(quietHours = quiet)
+    }.combine(settingsRepository.speechLanguageFlow) { state, langs ->
+        state.copy(speechLanguages = langs)
+    }.combine(settingsRepository.todayLayoutFlow) { state, layout ->
+        state.copy(todayLayout = layout)
     }.combine(_autoBackup) { state, auto ->
         state.copy(autoBackup = auto)
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), SettingsUiState())
@@ -107,9 +131,60 @@ class SettingsViewModel @Inject constructor(
         refreshAutoBackup()
     }
 
+    /** [kind] is "medicines" or "history". */
+    fun exportCsv(uri: Uri, kind: String) {
+        viewModelScope.launch {
+            try {
+                context.contentResolver.openOutputStream(uri)?.use { out ->
+                    if (kind == "history") csvExporter.writeDoseHistory(out) else csvExporter.writeMedicineList(out)
+                } ?: throw IllegalStateException("no stream")
+                _message.value = if (kind == "history") "Dose history saved (last 90 days)" else "Medicine list saved"
+            } catch (e: Exception) {
+                _error.value = "Could not save the file"
+            }
+        }
+    }
+
     fun backUpNow() {
         runCatching { app.allinonereminder.backup.AutoBackup.runNow(context) }
         _message.value = "Backing up now. The time below updates when it's done."
+    }
+
+    /** Toggles one ISO weekday (1 = Monday) in the weekend; at least one day always stays. */
+    fun toggleWeekendDay(day: Int) {
+        viewModelScope.launch {
+            val current = settingsRepository.weekendDaysFlow.first()
+            val next = if (day in current) current - day else current + day
+            if (next.isNotEmpty()) {
+                settingsRepository.setWeekendDays(next)
+                alarmCoordinator.reschedule("weekend_days_changed")
+            }
+        }
+    }
+
+    fun setQuietHours(profileId: String, start: Int?, end: Int?) {
+        viewModelScope.launch { settingsRepository.setQuietHours(profileId, start, end) }
+    }
+
+    fun setSpeechLanguage(profileId: String, language: String?) {
+        viewModelScope.launch { settingsRepository.setSpeechLanguage(profileId, language) }
+    }
+
+    fun setTodayLayout(layout: String) {
+        viewModelScope.launch { settingsRepository.setTodayLayout(layout) }
+    }
+
+    fun setPointsHidden(profileId: String, hidden: Boolean) {
+        viewModelScope.launch { settingsRepository.setPointsHidden(profileId, hidden) }
+    }
+
+    /** Locks the app to [profileId]'s simple screen; leaving needs [pin] (#79). */
+    fun enableSimpleMode(profileId: String, pin: String) {
+        viewModelScope.launch { settingsRepository.enableSimpleMode(profileId, pin) }
+    }
+
+    fun setCaregiverName(name: String) {
+        viewModelScope.launch { settingsRepository.setCaregiverName(name) }
     }
 
     fun setThemeMode(mode: String) {

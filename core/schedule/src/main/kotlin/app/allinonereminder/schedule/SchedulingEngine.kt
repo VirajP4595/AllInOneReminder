@@ -48,7 +48,8 @@ object SchedulingEngine {
         from: Instant,
         to: Instant,
         deviceZone: ZoneId = ZoneId.systemDefault(),
-        now: Instant = from
+        now: Instant = from,
+        weekendDays: Set<DayOfWeek> = DEFAULT_WEEKEND
     ): List<PlannedOccurrence> {
         val activeItems = items.filter { it.active && it.deletedAt == null }.associateBy { it.id }
         if (activeItems.isEmpty() || schedules.isEmpty()) return emptyList()
@@ -88,8 +89,11 @@ object SchedulingEngine {
 
             var currentDate = iterStart
             while (!currentDate.isAfter(iterEnd)) {
-                if (isWithinValidity(schedule, currentDate) && matchesRecurrence(schedule, currentDate)) {
-                    val minutes = resolveMinutesOfDay(schedule, currentDate, item.profileId, anchorMap)
+                if (isWithinValidity(schedule, currentDate) &&
+                    matchesRecurrence(schedule, currentDate) &&
+                    isOnCycleDay(schedule, currentDate)
+                ) {
+                    val minutes = resolveMinutesOfDay(schedule, currentDate, item.profileId, anchorMap, weekendDays)
                     for (minute in minutes) {
                         val secondOfDay = (minute * 60L).coerceIn(0L, 86399L)
                         val ldt = LocalDateTime.of(currentDate, LocalTime.ofSecondOfDay(secondOfDay))
@@ -153,6 +157,23 @@ object SchedulingEngine {
         }
 
         return result.sortedBy { it.dueAt }
+    }
+
+    /** Days counted as the weekend when nothing else is configured. */
+    val DEFAULT_WEEKEND: Set<DayOfWeek> = setOf(DayOfWeek.SATURDAY, DayOfWeek.SUNDAY)
+
+    /**
+     * On/off cycles (e.g. 21 days on, 7 off), counted from the schedule's anchorDate. A schedule
+     * without both numbers set (> 0) has no cycle. Days before the anchor are off.
+     */
+    internal fun isOnCycleDay(schedule: Schedule, date: LocalDate): Boolean {
+        val on = schedule.cycleOnDays ?: return true
+        val off = schedule.cycleOffDays ?: return true
+        if (on <= 0 || off <= 0) return true
+        val anchor = runCatching { LocalDate.parse(schedule.anchorDate) }.getOrNull() ?: return true
+        if (date.isBefore(anchor)) return false
+        val day = ChronoUnit.DAYS.between(anchor, date) % (on + off)
+        return day < on
     }
 
     private fun isWithinValidity(schedule: Schedule, date: LocalDate): Boolean {
@@ -233,7 +254,8 @@ object SchedulingEngine {
         schedule: Schedule,
         date: LocalDate,
         profileId: String,
-        anchorMap: Map<String, Map<Pair<DayType, app.allinonereminder.model.MealType>, Int>>
+        anchorMap: Map<String, Map<Pair<DayType, app.allinonereminder.model.MealType>, Int>>,
+        weekendDays: Set<DayOfWeek>
     ): List<Int> {
         if (schedule.recurrence == RecurrenceType.INTERVAL && schedule.anchorType == ScheduleAnchorType.FIXED) {
             val step = (schedule.intervalHours ?: 1).coerceAtLeast(1) * 60
@@ -245,7 +267,7 @@ object SchedulingEngine {
                 .takeWhile { it <= end }
                 .toList()
         }
-        val minute = resolveMinuteOfDay(schedule, date, profileId, anchorMap) ?: return emptyList()
+        val minute = resolveMinuteOfDay(schedule, date, profileId, anchorMap, weekendDays) ?: return emptyList()
         return listOf(minute)
     }
 
@@ -253,13 +275,20 @@ object SchedulingEngine {
         schedule: Schedule,
         date: LocalDate,
         profileId: String,
-        anchorMap: Map<String, Map<Pair<DayType, app.allinonereminder.model.MealType>, Int>>
+        anchorMap: Map<String, Map<Pair<DayType, app.allinonereminder.model.MealType>, Int>>,
+        weekendDays: Set<DayOfWeek>
     ): Int? {
+        val isWeekend = date.dayOfWeek in weekendDays
         return when (schedule.anchorType) {
-            ScheduleAnchorType.FIXED -> schedule.minuteOfDay
+            // Weekend shift ("an hour later on weekends") only applies to fixed times; meal-based
+            // times already follow the profile's weekend routine.
+            ScheduleAnchorType.FIXED -> schedule.minuteOfDay?.let { base ->
+                val shift = if (isWeekend) (schedule.weekendShiftMinutes ?: 0) else 0
+                (base + shift).coerceIn(0, 1439)
+            }
             ScheduleAnchorType.MEAL -> {
                 val meal = schedule.meal ?: return null
-                val dayType = if (date.dayOfWeek in listOf(DayOfWeek.SATURDAY, DayOfWeek.SUNDAY)) {
+                val dayType = if (isWeekend) {
                     DayType.WEEKEND
                 } else {
                     DayType.WEEKDAY

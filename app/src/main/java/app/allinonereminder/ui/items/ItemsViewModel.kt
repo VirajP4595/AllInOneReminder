@@ -28,8 +28,18 @@ data class ItemsUiState(
     val selectedProfileId: String? = null,
     val selectedTypeFilter: ItemType? = null, // null means "All Types"
     val items: List<ItemWithSchedulesUiModel> = emptyList(),
+    val query: String = "",
+    val sort: ItemSort = ItemSort.NAME,
+    val categories: List<String> = emptyList(),
+    val selectedCategory: String? = null,
     val isLoading: Boolean = true
 )
+
+/** Items list order (#78). */
+enum class ItemSort(val label: String) { NAME("Name"), PERSON("Person"), TYPE("Type"), LOW_STOCK("Low stock first") }
+
+/** Search text, sort and category filter, kept together so the main combine stays readable. */
+private data class ItemsListOptions(val query: String, val sort: ItemSort, val category: String?)
 
 @HiltViewModel
 class ItemsViewModel @Inject constructor(
@@ -41,6 +51,10 @@ class ItemsViewModel @Inject constructor(
 
     private val _selectedProfileId = MutableStateFlow<String?>(null)
     private val _selectedTypeFilter = MutableStateFlow<ItemType?>(null)
+    private val _query = MutableStateFlow("")
+    private val _sort = MutableStateFlow(ItemSort.NAME)
+    private val _category = MutableStateFlow<String?>(null)
+    private val _listOptions = combine(_query, _sort, _category) { q, s, c -> ItemsListOptions(q, s, c) }
 
     val uiState: StateFlow<ItemsUiState> = combine(
         profileRepository.getActiveProfiles(),
@@ -48,7 +62,8 @@ class ItemsViewModel @Inject constructor(
         _selectedTypeFilter,
         itemRepository.getActiveItems(),
         scheduleRepository.getAllActiveSchedules(),
-        stockEventRepository?.getAllCurrentStocksFlow() ?: flowOf(emptyMap<String, Double>())
+        stockEventRepository?.getAllCurrentStocksFlow() ?: flowOf(emptyMap<String, Double>()),
+        _listOptions
     ) { args ->
         @Suppress("UNCHECKED_CAST")
         val profiles = args[0] as List<Profile>
@@ -60,6 +75,9 @@ class ItemsViewModel @Inject constructor(
         val allSchedules = args[4] as List<Schedule>
         @Suppress("UNCHECKED_CAST")
         val stockMap = args[5] as Map<String, Double>
+        val options = args[6] as ItemsListOptions
+        val query = options.query.trim()
+        val categories = allItems.mapNotNull { it.category?.trim()?.takeIf { c -> c.isNotEmpty() } }.distinct().sorted()
 
         val profileMap = profiles.associateBy { it.id }
         val schedulesByItem = allSchedules.groupBy { it.itemId }
@@ -72,7 +90,13 @@ class ItemsViewModel @Inject constructor(
                 item.appointmentId == null &&
                 !item.isTestAlarm &&
                 (selectedProfileId == null || item.profileId == selectedProfileId) &&
-                (selectedTypeFilter == null || item.type == selectedTypeFilter)
+                (selectedTypeFilter == null || item.type == selectedTypeFilter) &&
+                (options.category == null || item.category.equals(options.category, ignoreCase = true)) &&
+                (query.isEmpty() ||
+                    item.name.contains(query, ignoreCase = true) ||
+                    (item.category?.contains(query, ignoreCase = true) == true) ||
+                    (item.instructions?.contains(query, ignoreCase = true) == true) ||
+                    (profileMap[item.profileId]?.name?.contains(query, ignoreCase = true) == true))
             }
             .map { item ->
                 val scheds = schedulesByItem[item.id] ?: emptyList()
@@ -98,12 +122,24 @@ class ItemsViewModel @Inject constructor(
                     stockStatusText = stockStatus
                 )
             }
+            .let { list ->
+                when (options.sort) {
+                    ItemSort.NAME -> list.sortedBy { it.item.name.lowercase() }
+                    ItemSort.PERSON -> list.sortedWith(compareBy({ it.profile?.name?.lowercase() ?: "" }, { it.item.name.lowercase() }))
+                    ItemSort.TYPE -> list.sortedWith(compareBy({ it.item.type.ordinal }, { it.item.name.lowercase() }))
+                    ItemSort.LOW_STOCK -> list.sortedWith(compareBy({ !it.isLowStock }, { it.item.name.lowercase() }))
+                }
+            }
 
         ItemsUiState(
             profiles = profiles,
             selectedProfileId = selectedProfileId,
             selectedTypeFilter = selectedTypeFilter,
             items = filteredItems,
+            query = options.query,
+            sort = options.sort,
+            categories = categories,
+            selectedCategory = options.category,
             isLoading = false
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), ItemsUiState())
@@ -111,6 +147,10 @@ class ItemsViewModel @Inject constructor(
     fun selectProfile(profileId: String?) {
         _selectedProfileId.value = profileId
     }
+
+    fun setQuery(q: String) { _query.value = q.take(60) }
+    fun setSort(s: ItemSort) { _sort.value = s }
+    fun selectCategory(c: String?) { _category.value = c }
 
     fun selectTypeFilter(type: ItemType?) {
         _selectedTypeFilter.value = type

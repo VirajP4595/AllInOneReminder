@@ -80,7 +80,8 @@ fun MainAppNavigation(
     mealAnchorRepository: MealAnchorRepository,
     alarmCoordinator: AlarmCoordinator,
     sampleDataSeeder: SampleDataSeeder,
-    testAlarmScheduler: app.allinonereminder.alarm.TestAlarmScheduler
+    testAlarmScheduler: app.allinonereminder.alarm.TestAlarmScheduler,
+    shortcutAction: String? = null
 ) {
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
@@ -93,7 +94,48 @@ fun MainAppNavigation(
     }.collectAsState(initial = true)
     val startDestination = if (onboardingCompleted) Screen.Today.route else Screen.Onboarding.route
 
+    // Simple mode (#79): the whole app becomes one large screen for one person until a PIN is entered.
+    val simpleProfileId by remember(settingsRepository) { settingsRepository.simpleModeProfileFlow }
+        .collectAsState(initial = null)
+    simpleProfileId?.let { profileId ->
+        val viewModel: TodayViewModel = hiltViewModel()
+        val uiState by viewModel.uiState.collectAsState()
+        LaunchedEffect(profileId) { viewModel.selectProfile(profileId) }
+        var exitError by remember { mutableStateOf(false) }
+        app.allinonereminder.ui.today.SimpleModeScreen(
+            uiState = uiState,
+            onTake = { viewModel.onTakeClicked(it, force = false) },
+            onExit = { pin ->
+                coroutineScope.launch { exitError = !settingsRepository.disableSimpleMode(pin) }
+            },
+            exitError = exitError
+        )
+        // Same double-dose guard as Today.
+        uiState.doubleDoseWarningOccurrence?.let { warn ->
+            AlertDialog(
+                onDismissRequest = viewModel::dismissDoubleDoseWarning,
+                title = { Text("Already taken recently") },
+                text = { Text("${warn.item.name} was taken a short while ago. Take it again?") },
+                confirmButton = { TextButton(onClick = { viewModel.onTakeClicked(warn, force = true) }) { Text("Yes, take it") } },
+                dismissButton = { TextButton(onClick = viewModel::dismissDoubleDoseWarning) { Text("No") } }
+            )
+        }
+        return
+    }
+
     val showBottomBar = currentRoute in BOTTOM_BAR_SCREENS.map { it.route }
+
+    // Launcher shortcuts (#84)
+    LaunchedEffect(shortcutAction, onboardingCompleted) {
+        if (!onboardingCompleted) return@LaunchedEffect
+        when (shortcutAction) {
+            "app.allinonereminder.action.ADD_REMINDER" -> navController.navigate(Screen.ItemAdd.route)
+            "app.allinonereminder.action.OPEN_TODAY" -> navController.navigate(Screen.Today.route) {
+                popUpTo(navController.graph.findStartDestination().id)
+                launchSingleTop = true
+            }
+        }
+    }
 
     Scaffold(
         bottomBar = {
@@ -249,7 +291,10 @@ fun MainAppNavigation(
                     onProfileSelected = viewModel::selectProfile,
                     onTypeFilterSelected = viewModel::selectTypeFilter,
                     onAddItemClick = { navController.navigate(Screen.ItemAdd.route) },
-                    onItemClick = { item -> navController.navigate("item/detail/${item.id}") }
+                    onItemClick = { item -> navController.navigate("item/detail/${item.id}") },
+                    onQueryChange = viewModel::setQuery,
+                    onSortChange = viewModel::setSort,
+                    onCategorySelected = viewModel::selectCategory
                 )
             }
 
@@ -271,6 +316,9 @@ fun MainAppNavigation(
                     onTimePolicyChange = viewModel::updateTimePolicy,
                     onGraceMinutesChange = viewModel::updateGraceMinutes,
                     onReRingMinutesChange = viewModel::updateReRingMinutes,
+                    onExpiryDateChange = viewModel::updateExpiryDate,
+                    onApplyTemplate = viewModel::applyTemplate,
+                    onCategoryChange = viewModel::updateCategory,
                     onMinGapMinutesChange = viewModel::updateMinGapMinutes,
                     onMaxPerDayChange = viewModel::updateMaxPerDay,
                     onCurrentStockChange = viewModel::updateCurrentStock,
@@ -307,6 +355,9 @@ fun MainAppNavigation(
                     onTimePolicyChange = viewModel::updateTimePolicy,
                     onGraceMinutesChange = viewModel::updateGraceMinutes,
                     onReRingMinutesChange = viewModel::updateReRingMinutes,
+                    onExpiryDateChange = viewModel::updateExpiryDate,
+                    onApplyTemplate = viewModel::applyTemplate,
+                    onCategoryChange = viewModel::updateCategory,
                     onMinGapMinutesChange = viewModel::updateMinGapMinutes,
                     onMaxPerDayChange = viewModel::updateMaxPerDay,
                     onCurrentStockChange = viewModel::updateCurrentStock,
@@ -336,6 +387,8 @@ fun MainAppNavigation(
                     onRefillClick = viewModel::addRefill,
                     onAdjustClick = viewModel::adjustStock,
                     onSetPaused = viewModel::setPaused,
+                    onCopyTo = viewModel::copyTo,
+                    onMessageShown = viewModel::consumeMessage,
                     onNavigateBack = { navController.popBackStack() }
                 )
             }
@@ -422,6 +475,13 @@ fun MainAppNavigation(
                     onNavigateToPermissions = { navController.navigate(Screen.Permissions.route) },
                     onNavigateToProfiles = { navController.navigate(Screen.Profiles.route) },
                     onSetThemeMode = viewModel::setThemeMode,
+                    onToggleWeekendDay = viewModel::toggleWeekendDay,
+                    onSetCaregiverName = viewModel::setCaregiverName,
+                    onSetPointsHidden = viewModel::setPointsHidden,
+                    onSetQuietHours = viewModel::setQuietHours,
+                    onSetSpeechLanguage = viewModel::setSpeechLanguage,
+                    onSetTodayLayout = viewModel::setTodayLayout,
+                    onEnableSimpleMode = viewModel::enableSimpleMode,
                     onUpdateSnooze = viewModel::updateSnoozeMinutes,
                     onUpdateRingDuration = viewModel::updateRingDurationSeconds,
                     onUpdateSpeakReminders = viewModel::updateSpeakReminders,
@@ -440,6 +500,7 @@ fun MainAppNavigation(
                     onEnableAutoBackup = viewModel::enableAutoBackup,
                     onDisableAutoBackup = viewModel::disableAutoBackup,
                     onBackUpNow = viewModel::backUpNow,
+                    onExportCsv = viewModel::exportCsv,
                     onInspectRestore = viewModel::inspectRestore,
                     onConfirmRestore = viewModel::confirmRestore,
                     onDismissRestorePreview = viewModel::dismissRestorePreview,

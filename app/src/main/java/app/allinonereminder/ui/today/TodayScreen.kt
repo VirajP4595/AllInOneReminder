@@ -16,6 +16,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.CustomAccessibilityAction
+import androidx.compose.ui.semantics.customActions
 import androidx.compose.ui.semantics.progressBarRangeInfo
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.graphics.Color
@@ -123,7 +125,11 @@ fun TodayScreen(
                 value = System.currentTimeMillis()
             }
         }
-        val pendingGroups = groupPendingByTimeOfDay(upNext, nowMillis)
+        val pendingGroups = if (uiState.groupByPerson && uiState.selectedProfileId == null) {
+            groupPendingByPerson(upNext, nowMillis)
+        } else {
+            groupPendingByTimeOfDay(upNext, nowMillis)
+        }
         val finished = visible.filter { it.occurrence.status !in open }
         val doneCount = visible.count { it.occurrence.status == OccurrenceStatus.TAKEN }
 
@@ -237,6 +243,16 @@ fun TodayScreen(
                     ActiveMealSessionCard(
                         session = uiState.activeMealSession,
                         onDoneEating = { onEndMeal(uiState.activeMealSession) }
+                    )
+                }
+            }
+
+            if (uiState.missedYesterday.isNotEmpty()) {
+                item {
+                    MissedYesterdayStrip(
+                        missed = uiState.missedYesterday,
+                        showProfile = uiState.selectedProfileId == null,
+                        onClick = onOccurrenceClick
                     )
                 }
             }
@@ -551,25 +567,29 @@ private fun TodayHero(
 
             if (progress != null) {
                 Spacer(modifier = Modifier.height(16.dp))
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    StatPill(
-                        icon = Icons.Default.LocalFireDepartment,
-                        text = if (progress.bestStreakDays == 1) "1 day" else "${progress.bestStreakDays} days",
-                        contentDescription = "Streak: ${progress.bestStreakDays} days",
-                        modifier = Modifier.weight(1f)
-                    )
-                    StatPill(
-                        icon = Icons.Default.Star,
-                        text = "${progress.totalPoints} pts",
-                        contentDescription = "${progress.totalPoints} points",
-                        modifier = Modifier.weight(1f)
-                    )
-                    StatPill(
-                        icon = Icons.Default.EmojiEvents,
-                        text = "Level ${progress.level}",
-                        contentDescription = "Level ${progress.level}",
-                        modifier = Modifier.weight(1f)
-                    )
+                // With very large text the three pills don't fit side by side; stack them (#82).
+                val stack = androidx.compose.ui.platform.LocalDensity.current.fontScale > 1.3f
+                val pills: List<Triple<androidx.compose.ui.graphics.vector.ImageVector, String, String>> = listOf(
+                    Triple(
+                        Icons.Default.LocalFireDepartment,
+                        if (progress.bestStreakDays == 1) "1 day" else "${progress.bestStreakDays} days",
+                        "Streak: ${progress.bestStreakDays} days"
+                    ),
+                    Triple(Icons.Default.Star, "${progress.totalPoints} pts", "${progress.totalPoints} points"),
+                    Triple(Icons.Default.EmojiEvents, "Level ${progress.level}", "Level ${progress.level}")
+                )
+                if (stack) {
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        pills.forEach { (icon, text, cd) ->
+                            StatPill(icon = icon, text = text, contentDescription = cd, modifier = Modifier.fillMaxWidth())
+                        }
+                    }
+                } else {
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        pills.forEach { (icon, text, cd) ->
+                            StatPill(icon = icon, text = text, contentDescription = cd, modifier = Modifier.weight(1f))
+                        }
+                    }
                 }
                 Spacer(modifier = Modifier.height(12.dp))
                 LinearProgressIndicator(
@@ -675,6 +695,65 @@ private fun SectionHeader(title: String, count: Int) {
     }
 }
 
+/**
+ * "Expired 3 Mar" or "Expires in 12 days" when an expiry date is within 30 days (#87), else null.
+ * The Boolean is true once the date has passed.
+ */
+internal fun expiryWarning(isoDate: String?, today: java.time.LocalDate = java.time.LocalDate.now()): Pair<String, Boolean>? {
+    val date = isoDate?.let { runCatching { java.time.LocalDate.parse(it) }.getOrNull() } ?: return null
+    val days = java.time.temporal.ChronoUnit.DAYS.between(today, date)
+    return when {
+        days < 0 -> "Expired ${date.format(DateTimeFormatter.ofPattern("d MMM"))}" to true
+        days == 0L -> "Expires today" to true
+        days <= 30 -> "Expires in $days day${if (days == 1L) "" else "s"}" to false
+        else -> null
+    }
+}
+
+/** Yesterday's missed doses, so a caregiver sees them without opening History (#78). */
+@Composable
+private fun MissedYesterdayStrip(
+    missed: List<OccurrenceUiModel>,
+    showProfile: Boolean,
+    onClick: (OccurrenceUiModel) -> Unit
+) {
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer)
+    ) {
+        Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Default.History, contentDescription = null, tint = MaterialTheme.colorScheme.onErrorContainer)
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    "Missed yesterday · ${missed.size}",
+                    style = MaterialTheme.typography.titleSmall,
+                    color = MaterialTheme.colorScheme.onErrorContainer
+                )
+            }
+            missed.take(5).forEach { m ->
+                val time = Instant.ofEpochMilli(m.occurrence.dueAt).atZone(ZoneId.systemDefault())
+                    .format(app.allinonereminder.ui.components.AppTime.formatter())
+                val who = if (showProfile && m.profile != null) " · ${m.profile.name}" else ""
+                Text(
+                    text = "${m.item.name}, $time$who",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onErrorContainer,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { onClick(m) }
+                        .padding(vertical = 4.dp)
+                )
+            }
+            if (missed.size > 5) {
+                Text("and ${missed.size - 5} more in History", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onErrorContainer)
+            }
+        }
+    }
+}
+
 /** One block of the "Pending today" list: overdue first, then the rest of the day by time. */
 internal data class PendingGroup(val label: String, val overdue: Boolean, val items: List<OccurrenceUiModel>)
 
@@ -705,6 +784,19 @@ internal fun groupPendingByTimeOfDay(pending: List<OccurrenceUiModel>, nowMillis
     return groups
 }
 
+/** "Group Today by person" (#90): overdue first, then one block per person, each by time. */
+internal fun groupPendingByPerson(pending: List<OccurrenceUiModel>, nowMillis: Long): List<PendingGroup> {
+    val (overdue, later) = pending.partition {
+        it.occurrence.status != OccurrenceStatus.RINGING && it.occurrence.dueAt < nowMillis
+    }
+    val groups = mutableListOf<PendingGroup>()
+    if (overdue.isNotEmpty()) groups += PendingGroup("Overdue", true, overdue)
+    later.groupBy { it.profile?.name ?: "Others" }.toSortedMap().forEach { (name, list) ->
+        groups += PendingGroup(name, false, list.sortedBy { it.occurrence.dueAt })
+    }
+    return groups
+}
+
 @Composable
 private fun PendingGroupLabel(label: String, overdue: Boolean, count: Int) {
     val color = if (overdue) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant
@@ -721,7 +813,8 @@ private fun PendingGroupLabel(label: String, overdue: Boolean, count: Int) {
                 "Morning" -> Icons.Default.WbSunny
                 "Afternoon" -> Icons.Default.LightMode
                 "Evening" -> Icons.Default.WbTwilight
-                else -> Icons.Default.Bedtime
+                "Night" -> Icons.Default.Bedtime
+                else -> Icons.Default.Person
             },
             contentDescription = null,
             tint = color,
@@ -820,10 +913,25 @@ private fun OccurrenceTimelineCard(
     val dueTime = Instant.ofEpochMilli(occ.dueAt).atZone(ZoneId.systemDefault())
     val formattedTime = dueTime.format(app.allinonereminder.ui.components.AppTime.formatter())
 
+    // TalkBack: the card's buttons are also offered as actions on the card itself (#82).
+    val isOpen = occ.status in listOf(OccurrenceStatus.PENDING, OccurrenceStatus.RINGING, OccurrenceStatus.SNOOZED, OccurrenceStatus.DEFERRED_MEAL)
     Card(
         modifier = Modifier
             .fillMaxWidth()
-            .clickable(onClick = onClick),
+            .clickable(onClick = onClick)
+            .semantics {
+                customActions = if (isOpen) {
+                    listOf(
+                        CustomAccessibilityAction("Mark ${item.name} taken") { onTake(); true },
+                        CustomAccessibilityAction("Snooze ${item.name}") { onSnooze(); true },
+                        CustomAccessibilityAction("Skip ${item.name}") { onSkip(); true }
+                    )
+                } else if (occ.status == OccurrenceStatus.MISSED) {
+                    listOf(CustomAccessibilityAction("Mark ${item.name} taken after all") { onTakenAfterAll(); true })
+                } else {
+                    listOf(CustomAccessibilityAction("Undo ${item.name}") { onReopen(); true })
+                }
+            },
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLowest),
         border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
         elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
@@ -863,6 +971,20 @@ private fun OccurrenceTimelineCard(
                     if (uiModel.stockStatus != null) {
                         Text(
                             text = uiModel.stockStatus,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    expiryWarning(item.expiryDate)?.let { (text, expired) ->
+                        Text(
+                            text = text,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = if (expired) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.tertiary
+                        )
+                    }
+                    if (occ.markedBy != null && occ.status in listOf(OccurrenceStatus.TAKEN, OccurrenceStatus.SKIPPED)) {
+                        Text(
+                            text = "Marked by ${occ.markedBy}",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -931,33 +1053,43 @@ private fun OccurrenceTimelineCard(
             // Quick actions if pending, ringing, snoozed, or deferred
             if (occ.status in listOf(OccurrenceStatus.PENDING, OccurrenceStatus.RINGING, OccurrenceStatus.SNOOZED, OccurrenceStatus.DEFERRED_MEAL)) {
                 Spacer(modifier = Modifier.height(12.dp))
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    Button(
-                        onClick = onTake,
-                        modifier = Modifier
-                            .weight(1.2f)
-                            .defaultMinSize(minHeight = 44.dp)
-                    ) {
-                        Text(if (item.type == ItemType.APPOINTMENT) "Got it" else "Take")
+                val takeLabel = if (item.type == ItemType.APPOINTMENT) "Got it" else "Take"
+                if (androidx.compose.ui.platform.LocalDensity.current.fontScale > 1.3f) {
+                    // Very large text: full-width buttons, one per line, so no label is cut (#82).
+                    Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Button(onClick = onTake, modifier = Modifier.fillMaxWidth().defaultMinSize(minHeight = 48.dp)) { Text(takeLabel) }
+                        FilledTonalButton(onClick = onSnooze, modifier = Modifier.fillMaxWidth().defaultMinSize(minHeight = 48.dp)) { Text("Snooze") }
+                        TextButton(onClick = onSkip, modifier = Modifier.fillMaxWidth().defaultMinSize(minHeight = 48.dp)) { Text("Skip") }
                     }
-                    FilledTonalButton(
-                        onClick = onSnooze,
-                        modifier = Modifier
-                            .weight(1f)
-                            .defaultMinSize(minHeight = 44.dp)
+                } else {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        Text("Snooze", maxLines = 1, softWrap = false)
-                    }
-                    TextButton(
-                        onClick = onSkip,
-                        modifier = Modifier
-                            .weight(0.8f)
-                            .defaultMinSize(minHeight = 44.dp)
-                    ) {
-                        Text("Skip")
+                        Button(
+                            onClick = onTake,
+                            modifier = Modifier
+                                .weight(1.2f)
+                                .defaultMinSize(minHeight = 44.dp)
+                        ) {
+                            Text(takeLabel)
+                        }
+                        FilledTonalButton(
+                            onClick = onSnooze,
+                            modifier = Modifier
+                                .weight(1f)
+                                .defaultMinSize(minHeight = 44.dp)
+                        ) {
+                            Text("Snooze", maxLines = 1, softWrap = false)
+                        }
+                        TextButton(
+                            onClick = onSkip,
+                            modifier = Modifier
+                                .weight(0.8f)
+                                .defaultMinSize(minHeight = 44.dp)
+                        ) {
+                            Text("Skip")
+                        }
                     }
                 }
             }

@@ -70,8 +70,17 @@ class MainActivity : ComponentActivity() {
         app.allinonereminder.ui.components.AppTime.refresh(this)
     }
 
+    /** Set from launcher shortcuts (#84); read once by the navigation. */
+    private var shortcutAction by androidx.compose.runtime.mutableStateOf<String?>(null)
+
+    override fun onNewIntent(intent: android.content.Intent) {
+        super.onNewIntent(intent)
+        shortcutAction = intent.action
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        if (savedInstanceState == null) shortcutAction = intent?.action
         app.allinonereminder.ui.components.AppTime.refresh(this)
 
         val keyManager = DatabaseKeyManager(this)
@@ -106,7 +115,8 @@ class MainActivity : ComponentActivity() {
                             mealAnchorRepository = mealAnchorRepository,
                             alarmCoordinator = alarmCoordinator,
                             sampleDataSeeder = sampleDataSeeder,
-                            testAlarmScheduler = testAlarmScheduler
+                            testAlarmScheduler = testAlarmScheduler,
+                            shortcutAction = shortcutAction
                         )
                     }
                 }

@@ -11,6 +11,10 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -30,7 +34,10 @@ fun ItemsScreen(
     onProfileSelected: (String?) -> Unit = {},
     onTypeFilterSelected: (ItemType?) -> Unit = {},
     onAddItemClick: () -> Unit = {},
-    onItemClick: (Item) -> Unit = {}
+    onItemClick: (Item) -> Unit = {},
+    onQueryChange: (String) -> Unit = {},
+    onSortChange: (ItemSort) -> Unit = {},
+    onCategorySelected: (String?) -> Unit = {}
 ) {
     Scaffold(
         topBar = {
@@ -72,6 +79,71 @@ fun ItemsScreen(
             contentPadding = PaddingValues(bottom = 96.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
+            item {
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    app.allinonereminder.ui.components.AppTextField(
+                        value = uiState.query,
+                        onValueChange = onQueryChange,
+                        placeholder = { Text("Search medicines, people…") },
+                        leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
+                        trailingIcon = if (uiState.query.isNotEmpty()) {
+                            {
+                                IconButton(onClick = { onQueryChange("") }) {
+                                    Icon(Icons.Default.Close, contentDescription = "Clear search")
+                                }
+                            }
+                        } else null,
+                        singleLine = true,
+                        modifier = Modifier.weight(1f)
+                    )
+                    var sortMenu by remember { mutableStateOf(false) }
+                    Box {
+                        IconButton(onClick = { sortMenu = true }) {
+                            Icon(Icons.Default.Sort, contentDescription = "Sort: ${uiState.sort.label}")
+                        }
+                        DropdownMenu(expanded = sortMenu, onDismissRequest = { sortMenu = false }) {
+                            ItemSort.entries.forEach { s ->
+                                DropdownMenuItem(
+                                    text = { Text(s.label) },
+                                    leadingIcon = if (s == uiState.sort) {
+                                        { Icon(Icons.Default.Check, contentDescription = null) }
+                                    } else null,
+                                    onClick = {
+                                        sortMenu = false
+                                        onSortChange(s)
+                                    }
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+            if (uiState.categories.isNotEmpty()) {
+                item {
+                    LazyRow(
+                        contentPadding = PaddingValues(horizontal = 16.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        item {
+                            ChoiceChip(
+                                selected = uiState.selectedCategory == null,
+                                onClick = { onCategorySelected(null) },
+                                label = { Text("Any category") }
+                            )
+                        }
+                        items(uiState.categories) { c ->
+                            ChoiceChip(
+                                selected = uiState.selectedCategory == c,
+                                onClick = { onCategorySelected(if (uiState.selectedCategory == c) null else c) },
+                                label = { Text(c) }
+                            )
+                        }
+                    }
+                }
+            }
             if (uiState.profiles.size > 1) {
                 item {
                     LazyRow(

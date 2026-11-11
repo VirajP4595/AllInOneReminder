@@ -416,6 +416,13 @@ fun HistoryOccurrenceCard(occ: Occurrence, item: Item) {
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
+                occ.markedBy?.let { name ->
+                    Text(
+                        text = "Marked by $name",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
             }
 
             // Status Badge

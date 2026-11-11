@@ -44,7 +44,7 @@ import app.allinonereminder.data.local.entity.StockEventEntity
         AppointmentPrepEntity::class,
         AppointmentAttachmentEntity::class
     ],
-    version = 5,
+    version = 6,
     exportSchema = true
 )
 @TypeConverters(RoomConverters::class)

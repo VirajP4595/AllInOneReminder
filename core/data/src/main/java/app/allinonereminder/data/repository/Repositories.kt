@@ -463,6 +463,7 @@ class OccurrenceRepository(
                     else -> OccurrenceStatus.PENDING
                 }
                 val reopened = current.copy(
+                    markedBy = null,
                     status = status,
                     remindAt = maxOf(base.remindAt, now + minDelayMillis),
                     ringCount = base.ringCount,
@@ -476,6 +477,13 @@ class OccurrenceRepository(
             }
         }
         return if (database != null) database.withTransaction { block() } else block()
+    }
+
+    /** Records who tapped Taken/Skip on a shared phone (#80). No-op without a name. */
+    suspend fun setMarkedBy(id: String, name: String?) {
+        if (name.isNullOrBlank()) return
+        val current = occurrenceDao.getByIdSync(id)?.toDomain() ?: return
+        occurrenceDao.upsertAll(listOf(current.copy(markedBy = name).toEntity()))
     }
 
     /** Corrects when a dose was actually taken (e.g. tapped "Taken" later than it was swallowed). */

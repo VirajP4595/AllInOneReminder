@@ -7,6 +7,9 @@ internal object PointsCalculator {
 
     private val ON_TIME_WINDOW: Duration = Duration.ofMinutes(30)
 
+    /** Much less than a dose taken on time (5 or 10), so skipping never pays better than taking. */
+    private const val HONEST_SKIP_POINTS = 1
+
     fun ledger(occurrences: List<OccurrenceRecord>): List<PointsEntry> =
         occurrences
             .groupBy { it.occurrenceId }
@@ -31,9 +34,12 @@ internal object PointsCalculator {
                 PointsReason.DOCTOR_STOPPED
             records.any { it.status == OccurrenceStatus.DUPLICATE_ACTION } ->
                 PointsReason.DUPLICATE_ACTION
+            records.any { it.status == OccurrenceStatus.SKIPPED && it.skipReason != null } ->
+                PointsReason.HONEST_SKIP
             else -> PointsReason.NOT_TAKEN
         }
-        return PointsEntry(occurrenceId, itemId, 0, reason)
+        val points = if (reason == PointsReason.HONEST_SKIP) HONEST_SKIP_POINTS else 0
+        return PointsEntry(occurrenceId, itemId, points, reason)
     }
 
     private fun takenPoints(

@@ -1,5 +1,6 @@
 package app.allinonereminder.alarm
 
+import kotlinx.coroutines.flow.first
 import android.app.AlarmManager
 import android.app.PendingIntent
 import android.content.Context
@@ -105,7 +106,8 @@ class AlarmCoordinator @Inject constructor(
             from = windowFrom,
             to = windowTo,
             deviceZone = zone,
-            now = now
+            now = now,
+            weekendDays = settingsRepository.weekendDaysFlow.first().map { java.time.DayOfWeek.of(it) }.toSet()
         )
 
         val plannedIds = plannedList.map { it.id }.toSet()

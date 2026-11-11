@@ -17,6 +17,8 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.border
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -119,8 +121,14 @@ class AlarmViewModel @Inject constructor(
     private val scheduleRepository: ScheduleRepository,
     private val mealSessionRepository: MealSessionRepository,
     private val alarmCoordinator: AlarmCoordinator,
-    private val refillAlertNotifier: RefillAlertNotifier? = null
+    private val refillAlertNotifier: RefillAlertNotifier? = null,
+    private val settingsRepository: SettingsRepository? = null
 ) : ViewModel() {
+
+    private suspend fun markedBy(id: String) {
+        val name = settingsRepository?.caregiverNameFlow?.first()
+        occurrenceRepository.setMarkedBy(id, name)
+    }
 
     private val _uiState = MutableStateFlow(AlarmUiState())
     val uiState: StateFlow<AlarmUiState> = _uiState.asStateFlow()
@@ -176,6 +184,7 @@ class AlarmViewModel @Inject constructor(
                 // No warning: mark all taken via targeted updates, stop ringing, reschedule, and finish
                 for (occUi in list) {
                     occurrenceRepository.markTakenTargeted(occUi.occurrence.id, now.toEpochMilli())
+                    markedBy(occUi.occurrence.id)
                     AlarmRingService.stopForOccurrence(context, occUi.occurrence.id)
                     refillAlertNotifier?.checkAndNotify(occUi.item.id)
                 }
@@ -207,6 +216,7 @@ class AlarmViewModel @Inject constructor(
 
             // Mark taken via targeted update
             occurrenceRepository.markTakenTargeted(occurrenceId, now.toEpochMilli())
+            markedBy(occurrenceId)
             refillAlertNotifier?.checkAndNotify(occUi.item.id)
             dismissWarningDialog()
             checkCompletion(occurrenceId)
@@ -233,6 +243,7 @@ class AlarmViewModel @Inject constructor(
 
             for (uiModel in _uiState.value.items) {
                 occurrenceRepository.markTakenTargeted(uiModel.occurrence.id, now.toEpochMilli())
+                markedBy(uiModel.occurrence.id)
                 AlarmRingService.stopForOccurrence(context, uiModel.occurrence.id)
                 refillAlertNotifier?.checkAndNotify(uiModel.item.id)
             }
@@ -269,6 +280,7 @@ class AlarmViewModel @Inject constructor(
         viewModelScope.launch {
             val now = Instant.now()
             occurrenceRepository.markSkippedTargeted(occurrenceId, now.toEpochMilli(), reason.name, note)
+            markedBy(occurrenceId)
             dismissSkipDialog()
             checkCompletion(occurrenceId)
         }
@@ -541,23 +553,41 @@ fun AlarmScreenContent(
                     .background(profileColor)
                     .padding(top = 28.dp, bottom = 24.dp, start = 24.dp, end = 24.dp)
             ) {
-                Text(
-                    text = if (dueAt != null) {
-                        java.time.Instant.ofEpochMilli(dueAt).atZone(java.time.ZoneId.systemDefault())
-                            .format(AppTime.formatter())
-                    } else "",
-                    color = headerText,
-                    style = MaterialTheme.typography.displaySmall
-                )
-                Text(
-                    text = when {
-                        firstProfile == null -> "Time for your reminder"
-                        state.items.size > 1 -> "Time for ${firstProfile.name}'s reminders"
-                        else -> "Time for ${firstProfile.name}'s reminder"
-                    },
-                    color = headerText.copy(alpha = 0.9f),
-                    style = MaterialTheme.typography.titleMedium
-                )
+                // Person first (#80): on a shared phone the first question is "whose dose is it?"
+                val people = state.items.mapNotNull { it.profile }.distinctBy { it.id }
+                val time = if (dueAt != null) {
+                    java.time.Instant.ofEpochMilli(dueAt).atZone(java.time.ZoneId.systemDefault())
+                        .format(AppTime.formatter())
+                } else ""
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    if (firstProfile != null) {
+                        app.allinonereminder.ui.components.ProfileAvatar(
+                            name = firstProfile.name,
+                            colorArgb = firstProfile.colorArgb,
+                            photoPath = firstProfile.photoPath,
+                            size = 64.dp,
+                            modifier = Modifier.border(3.dp, headerText.copy(alpha = 0.8f), CircleShape)
+                        )
+                        Spacer(modifier = Modifier.width(16.dp))
+                    }
+                    Column {
+                        Text(
+                            text = when {
+                                people.isEmpty() -> "Your reminder"
+                                people.size == 1 -> people.first().name
+                                else -> people.joinToString(" & ") { it.name }
+                            },
+                            color = headerText,
+                            style = MaterialTheme.typography.headlineLarge,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Text(
+                            text = if (state.items.size > 1) "$time · ${state.items.size} reminders" else time,
+                            color = headerText.copy(alpha = 0.9f),
+                            style = MaterialTheme.typography.titleLarge
+                        )
+                    }
+                }
             }
 
             Spacer(modifier = Modifier.height(16.dp))
@@ -580,7 +610,7 @@ fun AlarmScreenContent(
                         onClick = onAllTaken,
                         modifier = Modifier
                             .weight(1.3f)
-                            .defaultMinSize(minHeight = 52.dp),
+                            .defaultMinSize(minHeight = 72.dp),
                         contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp)
                     ) {
                         Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(20.dp))
@@ -591,7 +621,7 @@ fun AlarmScreenContent(
                         onClick = onSnoozeAll,
                         modifier = Modifier
                             .weight(1f)
-                            .defaultMinSize(minHeight = 52.dp),
+                            .defaultMinSize(minHeight = 72.dp),
                         contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp)
                     ) {
                         Icon(Icons.Default.Schedule, contentDescription = null, modifier = Modifier.size(20.dp))
@@ -711,7 +741,7 @@ fun AlarmItemCard(
                 onClick = onTaken,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .defaultMinSize(minHeight = 56.dp)
+                    .defaultMinSize(minHeight = 72.dp)
             ) {
                 Icon(Icons.Default.Check, contentDescription = null)
                 Spacer(modifier = Modifier.width(8.dp))
@@ -726,7 +756,7 @@ fun AlarmItemCard(
                     onClick = onSnooze,
                     modifier = Modifier
                         .weight(1f)
-                        .defaultMinSize(minHeight = 48.dp),
+                        .defaultMinSize(minHeight = 64.dp),
                     contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp)
                 ) {
                     Icon(Icons.Default.Schedule, contentDescription = null, modifier = Modifier.size(20.dp))
@@ -739,7 +769,7 @@ fun AlarmItemCard(
                         onClick = onSkip,
                         modifier = Modifier
                             .weight(1f)
-                            .defaultMinSize(minHeight = 48.dp),
+                            .defaultMinSize(minHeight = 64.dp),
                         contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp)
                     ) {
                         Icon(Icons.Default.Close, contentDescription = null, modifier = Modifier.size(20.dp))

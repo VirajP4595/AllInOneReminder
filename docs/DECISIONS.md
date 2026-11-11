@@ -76,3 +76,19 @@ re-rang every 5 minutes until the grace period ended. `ringCount` now counts rin
 
 Planned work lives in GitHub issues, listed in the tracker issue #92, with the research behind it
 in `docs/research/improvement-ideas-2026-11.md`.
+
+## Next and Later roadmap items (2026-11, #76-#91)
+
+- **DB v6** adds item expiry/category, schedule on/off cycles and weekend shift, and who marked
+  a dose. Backups carry them; older backup files still restore.
+- **Points:** as-needed (PRN) doses earn no points, so the app never rewards extra doses. A skip
+  with a reason earns 1 point (a dose on time earns 5-10), so honest logging is never punished.
+- **Simple mode** is per person and protected by a 4-8 digit PIN stored as a salted SHA-256 hash in
+  DataStore. It is a convenience lock for a shared phone, not a security boundary.
+- **Quiet hours** never delay a dose: reminders that are not "must not miss" ring as a soft
+  notification instead of a loud full-screen alarm. Missed-dose timing is unchanged.
+- **Hindi:** spoken reminders can be Hindi per person (uses the phone's Hindi voice if installed,
+  else the phone language). The app's screens are not translated yet; their text is hard-coded
+  and must be moved to string resources first (#89 stays open).
+- **Tests:** at the owner's request to check "at least code wise", new pure logic has unit tests
+  (engine cycles/weekend, CSV escaping, expiry warnings, grouping) and a 200% text screenshot run.

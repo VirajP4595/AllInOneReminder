@@ -251,11 +251,19 @@ class AlarmRingService : Service() {
         val profiles = occurrences.mapNotNull { profileRepository.getProfileSync(it.profileId) }
 
         // Use highest criticality in the group (CRITICAL > NORMAL > GENTLE)
-        val highestCriticality = when {
+        val groupCriticality = when {
             items.any { it.criticality == Criticality.CRITICAL } -> Criticality.CRITICAL
             items.any { it.criticality == Criticality.NORMAL } -> Criticality.NORMAL
             else -> Criticality.GENTLE
         }
+        // Quiet hours (#88): when it is quiet time for everyone in this group and nothing is
+        // "must not miss", ring softly (one notification sound, no full-screen alarm).
+        val quietHours = runCatching { settingsRepository.quietHoursFlow.first() }.getOrDefault(emptyMap())
+        val nowMinute = java.time.LocalTime.now().let { it.hour * 60 + it.minute }
+        val allQuiet = occurrences.isNotEmpty() && occurrences.all { occ ->
+            quietHours[occ.profileId]?.let { (start, end) -> isWithinQuietHours(nowMinute, start, end) } == true
+        }
+        val highestCriticality = if (allQuiet && groupCriticality != Criticality.CRITICAL) Criticality.GENTLE else groupCriticality
 
         val title = if (occurrences.size > 1) {
             "${occurrences.size} Reminders Due"
@@ -356,6 +364,10 @@ class AlarmRingService : Service() {
         handler.postDelayed(silenceRunnable!!, silenceDelayMillis)
     }
 
+    /** True if [minute] is in [start, end), where the range may cross midnight (e.g. 22:00-07:00). */
+    private fun isWithinQuietHours(minute: Int, start: Int, end: Int): Boolean =
+        if (start <= end) minute in start until end else minute >= start || minute < end
+
     /** Unanswered rings (first ring included) before a dose is marked missed. */
     private fun maxRingsFor(criticality: Criticality?): Int =
         if (criticality == Criticality.CRITICAL) MAX_RINGS_CRITICAL else MAX_RINGS_NORMAL
@@ -446,6 +458,22 @@ class AlarmRingService : Service() {
         scope.launch {
             val itemsById = items.associateBy { it.id }
             val profilesById = profiles.associateBy { it.id }
+            val languages = runCatching { settingsRepository.speechLanguageFlow.first() }.getOrDefault(emptyMap())
+            // Hindi (#89) when everyone in this group has Hindi set; otherwise the phone language.
+            val hindi = occurrences.isNotEmpty() && occurrences.all { languages[it.profileId] == "hi" }
+            val hindiPhrases = if (hindi) occurrences.mapNotNull { occ ->
+                val item = itemsById[occ.itemId] ?: return@mapNotNull null
+                val schedule = scheduleRepository.getScheduleSync(occ.scheduleId)
+                val dose = listOf(effectiveDoseAmount(schedule, item), item.dosageUnit).filter { it.isNotBlank() }.joinToString(" ")
+                val timing = if (schedule?.anchorType == ScheduleAnchorType.MEAL && schedule.meal != null && schedule.relation != null) {
+                    hindiMeal(schedule.meal!!) + " " + hindiRelation(schedule.relation!!)
+                } else null
+                listOfNotNull(
+                    profilesById[occ.profileId]?.name,
+                    listOf(item.name, dose).filter { it.isNotBlank() }.joinToString(", "),
+                    timing
+                ).joinToString(", ") + ", लेने का समय है"
+            } else emptyList()
             val phrases = occurrences.mapNotNull { occ ->
                 val item = itemsById[occ.itemId] ?: return@mapNotNull null
                 val profile = profilesById[occ.profileId]
@@ -480,14 +508,19 @@ class AlarmRingService : Service() {
             if (phrases.isEmpty()) return@launch
 
             val speechText = phrases.joinToString(". ")
+            val hindiText = hindiPhrases.joinToString("। ")
 
             handler.post {
                 try {
+                    var spokenText = speechText
                     if (textToSpeech == null) {
                         textToSpeech = TextToSpeech(applicationContext) { status ->
                             if (status == TextToSpeech.SUCCESS) {
                                 isTtsReady = true
-                                textToSpeech?.language = Locale.getDefault()
+                                val hindiOk = hindiText.isNotEmpty() &&
+                                    (textToSpeech?.setLanguage(Locale("hi", "IN")) ?: TextToSpeech.LANG_NOT_SUPPORTED) >= TextToSpeech.LANG_AVAILABLE
+                                if (!hindiOk) textToSpeech?.language = Locale.getDefault()
+                                spokenText = if (hindiOk) hindiText else speechText
                                 // Speak on the alarm stream so it is heard when media volume is low.
                                 textToSpeech?.setAudioAttributes(
                                     android.media.AudioAttributes.Builder()
@@ -495,16 +528,34 @@ class AlarmRingService : Service() {
                                         .setContentType(android.media.AudioAttributes.CONTENT_TYPE_SPEECH)
                                         .build()
                                 )
-                                textToSpeech?.speak(speechText, TextToSpeech.QUEUE_FLUSH, null, "reminder_speech")
+                                textToSpeech?.speak(spokenText, TextToSpeech.QUEUE_FLUSH, null, "reminder_speech")
                             }
                         }
                     } else if (isTtsReady) {
-                        textToSpeech?.speak(speechText, TextToSpeech.QUEUE_FLUSH, null, "reminder_speech")
+                        val hindiOk = hindiText.isNotEmpty() &&
+                            (textToSpeech?.setLanguage(Locale("hi", "IN")) ?: TextToSpeech.LANG_NOT_SUPPORTED) >= TextToSpeech.LANG_AVAILABLE
+                        if (!hindiOk) textToSpeech?.language = Locale.getDefault()
+                        textToSpeech?.speak(if (hindiOk) hindiText else speechText, TextToSpeech.QUEUE_FLUSH, null, "reminder_speech")
                     }
                 } catch (_: Exception) {
                 }
             }
         }
+    }
+
+    private fun hindiMeal(meal: app.allinonereminder.model.MealType): String = when (meal) {
+        app.allinonereminder.model.MealType.WAKE -> "उठने"
+        app.allinonereminder.model.MealType.BREAKFAST -> "नाश्ते"
+        app.allinonereminder.model.MealType.LUNCH -> "दोपहर के खाने"
+        app.allinonereminder.model.MealType.SNACK -> "शाम के नाश्ते"
+        app.allinonereminder.model.MealType.DINNER -> "रात के खाने"
+        app.allinonereminder.model.MealType.BED -> "सोने"
+    }
+
+    private fun hindiRelation(relation: app.allinonereminder.model.MealRelation): String = when (relation) {
+        app.allinonereminder.model.MealRelation.BEFORE -> "से पहले"
+        app.allinonereminder.model.MealRelation.WITH -> "के साथ"
+        app.allinonereminder.model.MealRelation.AFTER -> "के बाद"
     }
 
     private fun stopSoundAndVibration() {
