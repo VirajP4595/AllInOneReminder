@@ -492,7 +492,7 @@ private fun TodayHero(
             .clip(MaterialTheme.shapes.large)
             .background(
                 androidx.compose.ui.graphics.Brush.linearGradient(
-                    listOf(MaterialTheme.colorScheme.primary, Color(0xFF00463E))
+                    listOf(Color(0xFF00796B), Color(0xFF00463E))
                 )
             )
             .padding(20.dp)
@@ -546,6 +546,7 @@ private fun TodayHero(
                         .clip(CircleShape),
                     color = onHero,
                     trackColor = onHero.copy(alpha = 0.22f),
+                    gapSize = 0.dp,
                     drawStopIndicator = {}
                 )
                 Spacer(modifier = Modifier.height(4.dp))
@@ -711,7 +712,7 @@ private fun OccurrenceTimelineCard(
                     )
                 }
 
-                StatusChip(status = occ.status)
+                if (occ.status != OccurrenceStatus.PENDING) StatusChip(status = occ.status)
             }
 
             Spacer(modifier = Modifier.height(8.dp))
