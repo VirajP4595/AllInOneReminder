@@ -23,6 +23,9 @@ data class SettingsUiState(
     val defaultSnoozeMinutes: Int = 10,
     val ringDurationSeconds: Int = 120,
     val vibrationEnabled: Boolean = true,
+    val soundCritical: String = "default",
+    val soundNormal: String = "default",
+    val soundGentle: String = "default",
     val speakRemindersEnabled: Boolean = false,
     val healthConnectVerifyEnabled: Boolean = false,
     val healthAvailability: HealthAvailability = HealthAvailability.UNSUPPORTED,
@@ -59,6 +62,9 @@ class SettingsViewModel @Inject constructor(
             defaultSnoozeMinutes = settings.defaultSnoozeMinutes,
             ringDurationSeconds = settings.ringDurationSeconds,
             vibrationEnabled = settings.vibrationEnabled,
+            soundCritical = settings.soundCritical,
+            soundNormal = settings.soundNormal,
+            soundGentle = settings.soundGentle,
             speakRemindersEnabled = settings.speakRemindersEnabled,
             healthConnectVerifyEnabled = settings.healthConnectVerifyEnabled,
             onboardingCompleted = settings.onboardingCompleted,
@@ -118,6 +124,15 @@ class SettingsViewModel @Inject constructor(
         viewModelScope.launch {
             settingsRepository.updateSettings(ringDurationSeconds = seconds)
         }
+    }
+
+    fun updateVibration(enabled: Boolean) {
+        viewModelScope.launch { settingsRepository.updateSettings(vibrationEnabled = enabled) }
+    }
+
+    /** [criticality] is "CRITICAL", "NORMAL" or "GENTLE"; [uri] a ringtone URI or "default". */
+    fun setSound(criticality: String, uri: String) {
+        viewModelScope.launch { settingsRepository.setSound(criticality, uri) }
     }
 
     fun updateSpeakReminders(enabled: Boolean) {

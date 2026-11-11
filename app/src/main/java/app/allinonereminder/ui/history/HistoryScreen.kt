@@ -397,7 +397,7 @@ fun HistoryOccurrenceCard(occ: Occurrence, item: Item) {
                 )
 
                 val zone = ZoneId.systemDefault()
-                val dueFormatter = DateTimeFormatter.ofPattern("h:mm a")
+                val dueFormatter = app.allinonereminder.ui.components.AppTime.formatter()
                 val dueTime = Instant.ofEpochMilli(occ.dueAt).atZone(zone).format(dueFormatter)
 
                 Spacer(modifier = Modifier.height(4.dp))
@@ -422,9 +422,9 @@ fun HistoryOccurrenceCard(occ: Occurrence, item: Item) {
             Surface(
                 shape = RoundedCornerShape(12.dp),
                 color = when (occ.status) {
-                    OccurrenceStatus.TAKEN -> Color(0xFFE8F5E9)
-                    OccurrenceStatus.SKIPPED -> Color(0xFFFFF3E0)
-                    OccurrenceStatus.MISSED -> Color(0xFFFFEBEE)
+                    OccurrenceStatus.TAKEN -> MaterialTheme.colorScheme.primaryContainer
+                    OccurrenceStatus.SKIPPED -> MaterialTheme.colorScheme.tertiaryContainer
+                    OccurrenceStatus.MISSED -> MaterialTheme.colorScheme.errorContainer
                     else -> MaterialTheme.colorScheme.surfaceVariant
                 }
             ) {
@@ -439,10 +439,10 @@ fun HistoryOccurrenceCard(occ: Occurrence, item: Item) {
                     style = MaterialTheme.typography.labelMedium,
                     fontWeight = FontWeight.Bold,
                     color = when (occ.status) {
-                        OccurrenceStatus.TAKEN -> Color(0xFF2E7D32)
-                        OccurrenceStatus.SKIPPED -> Color(0xFFE65100)
-                        OccurrenceStatus.MISSED -> Color(0xFFC62828)
-                        else -> MaterialTheme.colorScheme.onSurface
+                        OccurrenceStatus.TAKEN -> MaterialTheme.colorScheme.onPrimaryContainer
+                        OccurrenceStatus.SKIPPED -> MaterialTheme.colorScheme.onTertiaryContainer
+                        OccurrenceStatus.MISSED -> MaterialTheme.colorScheme.onErrorContainer
+                        else -> MaterialTheme.colorScheme.onSurfaceVariant
                     }
                 )
             }

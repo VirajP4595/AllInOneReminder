@@ -64,8 +64,15 @@ class MainActivity : ComponentActivity() {
     @Inject
     lateinit var testAlarmScheduler: app.allinonereminder.alarm.TestAlarmScheduler
 
+    override fun onResume() {
+        super.onResume()
+        // The user may have switched the phone between 12- and 24-hour time.
+        app.allinonereminder.ui.components.AppTime.refresh(this)
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        app.allinonereminder.ui.components.AppTime.refresh(this)
 
         val keyManager = DatabaseKeyManager(this)
         val isKeyAccessible = keyManager.canAccessPassphrase()

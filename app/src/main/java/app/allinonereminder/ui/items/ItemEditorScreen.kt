@@ -352,7 +352,7 @@ fun ItemEditorScreen(
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
                 Text(
-                    text = "Advanced Timing & Guards",
+                    text = "More timing options",
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold
                 )
@@ -365,7 +365,7 @@ fun ItemEditorScreen(
             AnimatedVisibility(visible = showAdvanced) {
                 Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     // Time Policy
-                    Text("Timezone Policy", fontWeight = FontWeight.SemiBold)
+                    Text("When travelling, ring by", fontWeight = FontWeight.SemiBold)
                     SegmentedChoice(
                         options = listOf(
                             TimePolicy.LOCAL_WALL_CLOCK to "Local time",
@@ -375,31 +375,30 @@ fun ItemEditorScreen(
                         onSelect = onTimePolicyChange
                     )
 
-                    // Grace Minutes
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Column {
-                            Text("Grace Period", fontWeight = FontWeight.SemiBold)
-                            Text("Mark missed after this window", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        }
-                        Text("${uiState.graceMinutes} min", fontWeight = FontWeight.Bold)
-                    }
-
-                    // Double-dose Min Gap
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Column {
-                            Text("Double-Dose Guard Gap", fontWeight = FontWeight.SemiBold)
-                            Text("Warn if taken closer than this interval", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        }
-                        Text("${uiState.minGapMinutes} min (${uiState.minGapMinutes / 60}h)", fontWeight = FontWeight.Bold)
-                    }
+                    TimingChoice(
+                        title = "Ring again every",
+                        subtitle = "If nobody answers the alarm",
+                        options = listOf(2, 5, 10, 15),
+                        selected = uiState.reRingMinutes,
+                        label = ::minutesLabel,
+                        onSelect = onReRingMinutesChange
+                    )
+                    TimingChoice(
+                        title = "Count as missed after",
+                        subtitle = "How long after the time a dose still counts",
+                        options = listOf(30, 60, 120, 240),
+                        selected = uiState.graceMinutes,
+                        label = ::minutesLabel,
+                        onSelect = onGraceMinutesChange
+                    )
+                    TimingChoice(
+                        title = "Minimum time between doses",
+                        subtitle = "Warns you if a dose is taken sooner than this",
+                        options = listOf(60, 120, 240, 480),
+                        selected = uiState.minGapMinutes,
+                        label = ::minutesLabel,
+                        onSelect = onMinGapMinutesChange
+                    )
                 }
             }
 
@@ -447,36 +446,17 @@ private fun ScheduleDraftCard(
             }
 
             if (draft.anchorType == ScheduleAnchorType.FIXED) {
-                val hour = draft.minuteOfDay / 60
-                val min = draft.minuteOfDay % 60
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text("Time of Day", style = MaterialTheme.typography.bodyMedium)
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        IconButton(onClick = {
-                            val newMod = (draft.minuteOfDay - 30 + 1440) % 1440
-                            onUpdate { it.copy(minuteOfDay = newMod) }
-                        }) {
-                            Icon(Icons.Default.Remove, contentDescription = "-30m")
-                        }
-                        val ampm = if (hour >= 12) "PM" else "AM"
-                        val hour12 = if (hour % 12 == 0) 12 else hour % 12
-                        Text(
-                            text = String.format("%d:%02d %s", hour12, min, ampm),
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 18.sp,
-                            modifier = Modifier.padding(horizontal = 8.dp)
-                        )
-                        IconButton(onClick = {
-                            val newMod = (draft.minuteOfDay + 30) % 1440
-                            onUpdate { it.copy(minuteOfDay = newMod) }
-                        }) {
-                            Icon(Icons.Default.Add, contentDescription = "+30m")
-                        }
-                    }
+                    Text("Time of day", style = MaterialTheme.typography.bodyMedium)
+                    app.allinonereminder.ui.components.TimeChip(
+                        minuteOfDay = draft.minuteOfDay,
+                        onChange = { newMod -> onUpdate { it.copy(minuteOfDay = newMod) } },
+                        contentDescription = "Change reminder time"
+                    )
                 }
             } else {
                 // Meal Relative options
@@ -707,20 +687,16 @@ private fun ScheduleDraftCard(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                AppTextField(
-                    value = draft.validFrom ?: "",
-                    onValueChange = { value -> onUpdate { it.copy(validFrom = value.ifBlank { null }) } },
-                    label = { Text("From") },
-                    placeholder = { Text("YYYY-MM-DD") },
-                    singleLine = true,
+                app.allinonereminder.ui.components.DateChip(
+                    label = "From",
+                    isoDate = draft.validFrom,
+                    onChange = { value -> onUpdate { it.copy(validFrom = value) } },
                     modifier = Modifier.weight(1f)
                 )
-                AppTextField(
-                    value = draft.validUntil ?: "",
-                    onValueChange = { value -> onUpdate { it.copy(validUntil = value.ifBlank { null }) } },
-                    label = { Text("Until") },
-                    placeholder = { Text("YYYY-MM-DD") },
-                    singleLine = true,
+                app.allinonereminder.ui.components.DateChip(
+                    label = "Until",
+                    isoDate = draft.validUntil,
+                    onChange = { value -> onUpdate { it.copy(validUntil = value) } },
                     modifier = Modifier.weight(1f)
                 )
             }
@@ -851,4 +827,36 @@ fun ItemEditorScreenPreview() {
             )
         )
     }
+}
+
+/** A labelled row of chips for one timing option; a non-standard current value is kept as a chip. */
+@Composable
+private fun TimingChoice(
+    title: String,
+    subtitle: String,
+    options: List<Int>,
+    selected: Int,
+    label: (Int) -> String,
+    onSelect: (Int) -> Unit
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Text(title, fontWeight = FontWeight.SemiBold)
+        Text(subtitle, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        val all = (options + selected).distinct().sorted()
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            all.forEach { value ->
+                app.allinonereminder.ui.components.ChoiceChip(
+                    selected = value == selected,
+                    onClick = { onSelect(value) },
+                    label = { Text(label(value)) }
+                )
+            }
+        }
+    }
+}
+
+private fun minutesLabel(minutes: Int): String = when {
+    minutes < 60 -> "$minutes min"
+    minutes % 60 == 0 -> "${minutes / 60} h"
+    else -> "${minutes / 60} h ${minutes % 60} min"
 }

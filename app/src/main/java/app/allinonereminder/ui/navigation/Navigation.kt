@@ -210,7 +210,7 @@ fun MainAppNavigation(
                     onDismissAsNeededWarning = viewModel::dismissAsNeededWarning,
                     onDismissAsNeededLimit = viewModel::dismissAsNeededLimit,
                     onDismissDoubleDoseWarning = viewModel::dismissDoubleDoseWarning,
-                    onSnooze = { viewModel.onSnoozeClicked(it, 10) },
+                    onSnooze = { viewModel.onSnoozeClicked(it) },
                     onSkip = { occ, reason -> viewModel.onSkipClicked(occ, reason) },
                     onFixExactAlarm = {
                         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
@@ -231,7 +231,12 @@ fun MainAppNavigation(
                         }
                     },
                     onRetryReschedule = viewModel::retryReschedule,
-                    onRewardShown = viewModel::consumeReward
+                    onRewardShown = viewModel::consumeReward,
+                    onUndo = viewModel::undoLast,
+                    onUndoShown = viewModel::consumeUndo,
+                    onReopen = viewModel::onReopenClicked,
+                    onTakenAfterAll = viewModel::onTakenAfterAll,
+                    onChangeTakenTime = viewModel::onChangeTakenTime
                 )
             }
 
@@ -330,6 +335,7 @@ fun MainAppNavigation(
                     onDeleteClick = viewModel::deleteItem,
                     onRefillClick = viewModel::addRefill,
                     onAdjustClick = viewModel::adjustStock,
+                    onSetPaused = viewModel::setPaused,
                     onNavigateBack = { navController.popBackStack() }
                 )
             }
@@ -419,6 +425,8 @@ fun MainAppNavigation(
                     onUpdateSnooze = viewModel::updateSnoozeMinutes,
                     onUpdateRingDuration = viewModel::updateRingDurationSeconds,
                     onUpdateSpeakReminders = viewModel::updateSpeakReminders,
+                    onUpdateVibration = viewModel::updateVibration,
+                    onSetSound = viewModel::setSound,
                     onRefreshHealthStatus = viewModel::refreshHealthStatus,
                     onSetHealthVerification = viewModel::setHealthVerification,
                     onHealthPermissionResult = viewModel::onHealthPermissionResult,

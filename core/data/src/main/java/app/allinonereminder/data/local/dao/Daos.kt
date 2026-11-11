@@ -332,6 +332,10 @@ interface StockEventDao {
     @Query("SELECT COUNT(*) FROM stock_event WHERE itemId = :itemId")
     suspend fun countEventsForItem(itemId: String): Int
 
+    /** Removes the stock decrement a dose created, when that dose is undone. */
+    @Query("DELETE FROM stock_event WHERE occurrenceId = :occurrenceId")
+    suspend fun deleteForOccurrence(occurrenceId: String): Int
+
     @Query("SELECT * FROM stock_event WHERE itemId = :itemId ORDER BY createdAt DESC")
     fun getEventsForItemFlow(itemId: String): Flow<List<StockEventEntity>>
 

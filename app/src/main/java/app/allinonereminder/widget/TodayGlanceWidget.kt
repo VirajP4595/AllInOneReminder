@@ -86,7 +86,7 @@ class TodayGlanceWidget : GlanceAppWidget() {
                 if (itemEntity != null) {
                     val item = itemEntity.toDomain()
                     nextItemName = item.name
-                    val timeFormatter = DateTimeFormatter.ofPattern("h:mm a")
+                    val timeFormatter = app.allinonereminder.ui.components.AppTime.formatter()
                     nextItemTime = Instant.ofEpochMilli(upcoming.dueAt).atZone(zone).format(timeFormatter)
                     nextItemDose = "${item.dosageAmount} ${item.dosageUnit}"
                 }

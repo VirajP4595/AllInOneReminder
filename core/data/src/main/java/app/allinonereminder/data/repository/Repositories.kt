@@ -445,6 +445,47 @@ class OccurrenceRepository(
         }
     }
 
+    /**
+     * Undo: puts a TAKEN, SKIPPED or MISSED dose back to open. [restore] is the row as it was before
+     * the action when known (from the undo snackbar); otherwise the dose simply becomes PENDING.
+     * The dose's stock decrement is removed too. The next reminder is never in the past, so undoing
+     * doesn't make the alarm ring at once; it comes back after [minDelayMillis].
+     */
+    suspend fun reopen(id: String, restore: Occurrence? = null, now: Long = System.currentTimeMillis(), minDelayMillis: Long = 60_000L): Boolean {
+        val block: suspend () -> Boolean = {
+            val current = occurrenceDao.getByIdSync(id)?.toDomain()
+            if (current == null) {
+                false
+            } else {
+                val base = restore ?: current
+                val status = when (base.status) {
+                    OccurrenceStatus.SNOOZED, OccurrenceStatus.DEFERRED_MEAL -> base.status
+                    else -> OccurrenceStatus.PENDING
+                }
+                val reopened = current.copy(
+                    status = status,
+                    remindAt = maxOf(base.remindAt, now + minDelayMillis),
+                    ringCount = base.ringCount,
+                    actedAt = null,
+                    skipReason = null,
+                    updatedAt = now
+                )
+                occurrenceDao.upsertAll(listOf(reopened.toEntity()))
+                stockEventDao?.deleteForOccurrence(id)
+                true
+            }
+        }
+        return if (database != null) database.withTransaction { block() } else block()
+    }
+
+    /** Corrects when a dose was actually taken (e.g. tapped "Taken" later than it was swallowed). */
+    suspend fun changeTakenTime(id: String, actedAt: Long, now: Long = System.currentTimeMillis()): Boolean {
+        val current = occurrenceDao.getByIdSync(id)?.toDomain() ?: return false
+        if (current.status != OccurrenceStatus.TAKEN) return false
+        occurrenceDao.upsertAll(listOf(current.copy(actedAt = actedAt, updatedAt = now).toEntity()))
+        return true
+    }
+
     suspend fun markSkippedTargeted(id: String, actedAt: Long, skipReason: String?, note: String? = null): Boolean {
         val count = occurrenceDao.markSkippedTargeted(id, actedAt, actedAt, skipReason, note)
         return count > 0

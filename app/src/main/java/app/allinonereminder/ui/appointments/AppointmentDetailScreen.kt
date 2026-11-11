@@ -98,7 +98,7 @@ fun AppointmentDetailScreen(
         } else {
             val zdt = Instant.ofEpochMilli(appt.startAt).atZone(ZoneId.systemDefault())
             val dateFormatter = DateTimeFormatter.ofPattern("EEEE, MMMM d, yyyy")
-            val timeFormatter = DateTimeFormatter.ofPattern("hh:mm a")
+            val timeFormatter = app.allinonereminder.ui.components.AppTime.formatter()
 
             LazyColumn(
                 modifier = Modifier

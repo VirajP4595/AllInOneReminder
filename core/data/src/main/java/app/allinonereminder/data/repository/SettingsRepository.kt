@@ -56,6 +56,9 @@ class SettingsRepository(
         val KEY_DEVICE_ID = stringPreferencesKey("device_id")
         val KEY_LAST_RESCHEDULE_ERROR = stringPreferencesKey("last_reschedule_error")
         val KEY_THEME_MODE = stringPreferencesKey("theme_mode")
+
+        /** Stored sound value meaning "use the phone's default sound". Older installs stored names like "alarm". */
+        const val SOUND_DEFAULT = "default"
     }
 
     /** One of [ThemeMode]; defaults to following the phone. */
@@ -121,6 +124,19 @@ class SettingsRepository(
             vibrationEnabled?.let { prefs[KEY_VIBRATION] = it }
             speakRemindersEnabled?.let { prefs[KEY_SPEAK_REMINDERS] = it }
         }
+    }
+
+    /**
+     * Alarm sound for one criticality level ("CRITICAL", "NORMAL", "GENTLE"): a ringtone URI from
+     * the system picker, or [SOUND_DEFAULT] for the phone's default alarm / notification sound.
+     */
+    suspend fun setSound(criticality: String, uri: String) {
+        val key = when (criticality) {
+            "CRITICAL" -> KEY_SOUND_CRITICAL
+            "GENTLE" -> KEY_SOUND_GENTLE
+            else -> KEY_SOUND_NORMAL
+        }
+        dataStore.edit { it[key] = uri }
     }
 
     suspend fun setSpeakRemindersEnabled(enabled: Boolean) {

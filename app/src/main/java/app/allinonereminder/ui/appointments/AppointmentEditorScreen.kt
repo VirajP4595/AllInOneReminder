@@ -215,9 +215,7 @@ fun AppointmentEditorScreen(
                                     Icon(Icons.Default.Remove, contentDescription = "-30m")
                                 }
 
-                                val ampm = if (uiState.timeHour >= 12) "PM" else "AM"
-                                val hour12 = if (uiState.timeHour % 12 == 0) 12 else uiState.timeHour % 12
-                                val formattedTime = String.format("%d:%02d %s", hour12, uiState.timeMinute, ampm)
+                                val formattedTime = app.allinonereminder.ui.components.AppTime.format(uiState.timeHour * 60 + uiState.timeMinute)
 
                                 TextButton(onClick = {
                                     TimePickerDialog(
@@ -227,7 +225,7 @@ fun AppointmentEditorScreen(
                                         },
                                         uiState.timeHour,
                                         uiState.timeMinute,
-                                        false
+                                        app.allinonereminder.ui.components.AppTime.is24Hour
                                     ).show()
                                 }) {
                                     Text(

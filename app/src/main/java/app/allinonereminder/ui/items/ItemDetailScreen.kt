@@ -1,5 +1,6 @@
 package app.allinonereminder.ui.items
 
+import androidx.compose.foundation.selection.toggleable
 import android.graphics.BitmapFactory
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -42,6 +43,7 @@ fun ItemDetailScreen(
     onDeleteClick: () -> Unit = {},
     onRefillClick: (Double) -> Unit = {},
     onAdjustClick: (Double) -> Unit = {},
+    onSetPaused: (Boolean) -> Unit = {},
     onNavigateBack: () -> Unit = {}
 ) {
     val context = LocalContext.current
@@ -94,6 +96,43 @@ fun ItemDetailScreen(
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
+            // Pause / resume: keeps the item and its history, stops its reminders.
+            item {
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(
+                        containerColor = if (item.active) MaterialTheme.colorScheme.surfaceContainerLowest
+                        else MaterialTheme.colorScheme.tertiaryContainer
+                    )
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .toggleable(
+                                value = item.active,
+                                role = androidx.compose.ui.semantics.Role.Switch,
+                                onValueChange = { on -> onSetPaused(!on) }
+                            )
+                            .padding(16.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                if (item.active) "Reminders on" else "Paused",
+                                style = MaterialTheme.typography.titleMedium
+                            )
+                            Text(
+                                if (item.active) "Turn off to pause without losing history."
+                                else "No reminders until you turn this back on.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        Switch(checked = item.active, onCheckedChange = null)
+                    }
+                }
+            }
+
             // Main info card
             item {
                 Card(
@@ -363,7 +402,7 @@ fun ItemDetailScreen(
             onDismissRequest = { showDeleteConfirm = false },
             icon = { Icon(Icons.Default.Warning, contentDescription = null, tint = MaterialTheme.colorScheme.error) },
             title = { Text("Delete Reminder?") },
-            text = { Text("Are you sure you want to delete $itemName? All future scheduled alarms and history will be removed.") },
+            text = { Text("Delete $itemName? Its reminders and history will be removed. To stop reminders but keep the history, pause it instead.") },
             confirmButton = {
                 Button(
                     onClick = {
@@ -376,8 +415,18 @@ fun ItemDetailScreen(
                 }
             },
             dismissButton = {
-                OutlinedButton(onClick = { showDeleteConfirm = false }) {
-                    Text("Cancel")
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    if (item?.active == true) {
+                        OutlinedButton(onClick = {
+                            showDeleteConfirm = false
+                            onSetPaused(true)
+                        }) {
+                            Text("Pause instead")
+                        }
+                    }
+                    TextButton(onClick = { showDeleteConfirm = false }) {
+                        Text("Cancel")
+                    }
                 }
             }
         )
@@ -472,7 +521,7 @@ fun ItemDetailScreen(
 @Composable
 private fun OccurrenceHistoryRow(occ: Occurrence) {
     val planned = Instant.ofEpochMilli(occ.plannedAt).atZone(ZoneId.systemDefault())
-    val formattedDate = planned.format(DateTimeFormatter.ofPattern("MMM dd, hh:mm a"))
+    val formattedDate = planned.format(DateTimeFormatter.ofPattern("MMM dd, " + app.allinonereminder.ui.components.AppTime.timePattern()))
     val actedAt = occ.actedAt
 
     Card(
@@ -491,7 +540,7 @@ private fun OccurrenceHistoryRow(occ: Occurrence) {
                 if (actedAt != null) {
                     val actedTime = Instant.ofEpochMilli(actedAt).atZone(ZoneId.systemDefault())
                     Text(
-                        text = "Acted: ${actedTime.format(DateTimeFormatter.ofPattern("hh:mm a"))}",
+                        text = "Acted: ${actedTime.format(app.allinonereminder.ui.components.AppTime.formatter())}",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -526,7 +575,7 @@ private fun OccurrenceHistoryRow(occ: Occurrence) {
 @Composable
 private fun ChangeLogRow(log: ChangeLog) {
     val time = Instant.ofEpochMilli(log.changedAt).atZone(ZoneId.systemDefault())
-    val formatted = time.format(DateTimeFormatter.ofPattern("MMM dd, HH:mm"))
+    val formatted = time.format(DateTimeFormatter.ofPattern("MMM dd, " + app.allinonereminder.ui.components.AppTime.timePattern()))
 
     Row(
         modifier = Modifier

@@ -14,6 +14,7 @@ class AllInOneReminderApplication : Application() {
 
     override fun onCreate() {
         super.onCreate()
+        app.allinonereminder.ui.components.AppTime.refresh(this)
         AlarmNotificationHelper.createNotificationChannels(this)
         alarmCoordinator.rescheduleAsync("AppStartup")
     }

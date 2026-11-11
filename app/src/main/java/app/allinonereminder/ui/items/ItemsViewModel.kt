@@ -126,11 +126,7 @@ class ItemsViewModel @Inject constructor(
         }
 
         private fun formatMinuteOfDay(minuteOfDay: Int): String {
-            val hour = (minuteOfDay / 60) % 24
-            val min = minuteOfDay % 60
-            val ampm = if (hour >= 12) "PM" else "AM"
-            val hour12 = if (hour % 12 == 0) 12 else hour % 12
-            return String.format("%d:%02d %s", hour12, min, ampm)
+            return app.allinonereminder.ui.components.AppTime.format(minuteOfDay)
         }
 
         private fun nthWeekLabel(nthWeek: Int): String = when (nthWeek.coerceIn(1, 5)) {

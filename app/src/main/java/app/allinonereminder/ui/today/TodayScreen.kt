@@ -50,11 +50,26 @@ fun TodayScreen(
     onEndMeal: (MealSession) -> Unit = {},
     onOccurrenceClick: (OccurrenceUiModel) -> Unit = {},
     onRetryReschedule: () -> Unit = {},
-    onRewardShown: () -> Unit = {}
+    onRewardShown: () -> Unit = {},
+    onUndo: () -> Unit = {},
+    onUndoShown: () -> Unit = {},
+    onReopen: (OccurrenceUiModel) -> Unit = {},
+    onTakenAfterAll: (OccurrenceUiModel) -> Unit = {},
+    onChangeTakenTime: (OccurrenceUiModel, Int) -> Unit = { _, _ -> }
 ) {
     var showMealDialog by remember { mutableStateOf(false) }
     var skippingOcc by remember { mutableStateOf<OccurrenceUiModel?>(null) }
     val snackbarHostState = remember { SnackbarHostState() }
+    LaunchedEffect(uiState.undo) {
+        val undo = uiState.undo ?: return@LaunchedEffect
+        val result = snackbarHostState.showSnackbar(
+            message = undo.message,
+            actionLabel = "Undo",
+            withDismissAction = true,
+            duration = SnackbarDuration.Long
+        )
+        if (result == SnackbarResult.ActionPerformed) onUndo() else onUndoShown()
+    }
     LaunchedEffect(uiState.rewardMessage) {
         val msg = uiState.rewardMessage
         if (msg != null) {
@@ -271,6 +286,9 @@ fun TodayScreen(
                         OccurrenceTimelineCard(
                             uiModel = occUi,
                             showProfileBadge = uiState.selectedProfileId == null,
+                            onReopen = { onReopen(occUi) },
+                            onTakenAfterAll = { onTakenAfterAll(occUi) },
+                            onChangeTakenTime = { minute -> onChangeTakenTime(occUi, minute) },
                             onTake = { onTake(occUi) },
                             onSnooze = { onSnooze(occUi) },
                             onSkip = { skippingOcc = occUi },
@@ -496,7 +514,7 @@ private fun TodayHero(
     val subline = when {
         allDone -> "Great job. See you tomorrow."
         nextAlarmEpochMillis != null -> "Next at " + Instant.ofEpochMilli(nextAlarmEpochMillis)
-            .atZone(ZoneId.systemDefault()).format(DateTimeFormatter.ofPattern("h:mm a"))
+            .atZone(ZoneId.systemDefault()).format(app.allinonereminder.ui.components.AppTime.formatter())
         total == 0 -> "Add a reminder from Items."
         else -> "Nothing else scheduled."
     }
@@ -789,6 +807,9 @@ private fun OccurrenceTimelineCard(
     uiModel: OccurrenceUiModel,
     showProfileBadge: Boolean,
     isLate: Boolean = false,
+    onReopen: () -> Unit = {},
+    onTakenAfterAll: () -> Unit = {},
+    onChangeTakenTime: (Int) -> Unit = {},
     onTake: () -> Unit,
     onSnooze: () -> Unit,
     onSkip: () -> Unit,
@@ -797,7 +818,7 @@ private fun OccurrenceTimelineCard(
     val occ = uiModel.occurrence
     val item = uiModel.item
     val dueTime = Instant.ofEpochMilli(occ.dueAt).atZone(ZoneId.systemDefault())
-    val formattedTime = dueTime.format(DateTimeFormatter.ofPattern("h:mm a"))
+    val formattedTime = dueTime.format(app.allinonereminder.ui.components.AppTime.formatter())
 
     Card(
         modifier = Modifier
@@ -867,6 +888,43 @@ private fun OccurrenceTimelineCard(
                 if (occ.status != OccurrenceStatus.PENDING) {
                     Spacer(modifier = Modifier.width(8.dp))
                     StatusChip(status = occ.status)
+                }
+            }
+
+            // Done doses: undo a mis-tap, correct the time taken, or log a missed dose after all.
+            if (occ.status in listOf(OccurrenceStatus.TAKEN, OccurrenceStatus.SKIPPED, OccurrenceStatus.MISSED)) {
+                var showTimePicker by remember { mutableStateOf(false) }
+                Spacer(modifier = Modifier.height(8.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    if (occ.status == OccurrenceStatus.MISSED) {
+                        FilledTonalButton(
+                            onClick = onTakenAfterAll,
+                            modifier = Modifier.defaultMinSize(minHeight = 44.dp)
+                        ) { Text("Taken after all") }
+                    } else {
+                        TextButton(
+                            onClick = onReopen,
+                            modifier = Modifier.defaultMinSize(minHeight = 44.dp)
+                        ) { Text("Undo") }
+                    }
+                    if (occ.status == OccurrenceStatus.TAKEN) {
+                        TextButton(
+                            onClick = { showTimePicker = true },
+                            modifier = Modifier.defaultMinSize(minHeight = 44.dp)
+                        ) { Text("Change time taken") }
+                    }
+                }
+                if (showTimePicker) {
+                    val zone = ZoneId.systemDefault()
+                    val acted = Instant.ofEpochMilli(occ.actedAt ?: occ.dueAt).atZone(zone)
+                    app.allinonereminder.ui.components.TimePickerDialog(
+                        initialMinuteOfDay = acted.hour * 60 + acted.minute,
+                        onConfirm = { minute ->
+                            showTimePicker = false
+                            onChangeTakenTime(minute)
+                        },
+                        onDismiss = { showTimePicker = false }
+                    )
                 }
             }
 
@@ -1022,13 +1080,13 @@ private fun AsNeededCard(
 private fun StatusChip(status: OccurrenceStatus) {
     val (bgColor, textColor, text) = when (status) {
         OccurrenceStatus.PENDING -> Triple(MaterialTheme.colorScheme.surfaceVariant, MaterialTheme.colorScheme.onSurfaceVariant, "Pending")
-        OccurrenceStatus.RINGING -> Triple(Color(0xFFFFCDD2), Color(0xFFB71C1C), "Ringing")
-        OccurrenceStatus.TAKEN -> Triple(Color(0xFFE8F5E9), Color(0xFF2E7D32), "Taken")
-        OccurrenceStatus.SNOOZED -> Triple(Color(0xFFFFF8E1), Color(0xFFF57F17), "Snoozed")
-        OccurrenceStatus.DEFERRED_MEAL -> Triple(Color(0xFFE0F7FA), Color(0xFF00838F), "After Meal")
-        OccurrenceStatus.MISSED -> Triple(Color(0xFFFFEBEE), Color(0xFFC62828), "Missed")
-        OccurrenceStatus.SKIPPED -> Triple(Color(0xFFEEEEEE), Color(0xFF616161), "Skipped")
-        OccurrenceStatus.SUPERSEDED -> Triple(Color(0xFFEEEEEE), Color(0xFF9E9E9E), "Superseded")
+        OccurrenceStatus.RINGING -> Triple(MaterialTheme.colorScheme.errorContainer, MaterialTheme.colorScheme.onErrorContainer, "Ringing")
+        OccurrenceStatus.TAKEN -> Triple(MaterialTheme.colorScheme.primaryContainer, MaterialTheme.colorScheme.onPrimaryContainer, "Taken")
+        OccurrenceStatus.SNOOZED -> Triple(MaterialTheme.colorScheme.tertiaryContainer, MaterialTheme.colorScheme.onTertiaryContainer, "Snoozed")
+        OccurrenceStatus.DEFERRED_MEAL -> Triple(MaterialTheme.colorScheme.secondaryContainer, MaterialTheme.colorScheme.onSecondaryContainer, "After meal")
+        OccurrenceStatus.MISSED -> Triple(MaterialTheme.colorScheme.errorContainer, MaterialTheme.colorScheme.onErrorContainer, "Missed")
+        OccurrenceStatus.SKIPPED -> Triple(MaterialTheme.colorScheme.surfaceVariant, MaterialTheme.colorScheme.onSurfaceVariant, "Skipped")
+        OccurrenceStatus.SUPERSEDED -> Triple(MaterialTheme.colorScheme.surfaceVariant, MaterialTheme.colorScheme.outline, "Replaced")
     }
 
     Surface(
@@ -1051,7 +1109,7 @@ private fun ActiveMealSessionCard(
     onDoneEating: () -> Unit
 ) {
     val mealName = session.meal.name.lowercase().replaceFirstChar { it.uppercase() }
-    val timeFormatter = DateTimeFormatter.ofPattern("h:mm a").withZone(ZoneId.systemDefault())
+    val timeFormatter = app.allinonereminder.ui.components.AppTime.formatter().withZone(ZoneId.systemDefault())
     val startedStr = timeFormatter.format(Instant.ofEpochMilli(session.startedAt))
 
     Card(

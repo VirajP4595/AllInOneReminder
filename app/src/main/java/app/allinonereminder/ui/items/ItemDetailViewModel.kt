@@ -130,6 +130,18 @@ class ItemDetailViewModel @Inject constructor(
         }
     }
 
+    /** Pause keeps the item and its history but stops its reminders (the engine skips inactive items). */
+    fun setPaused(paused: Boolean) {
+        viewModelScope.launch {
+            val item = itemRepository.getItemSync(itemId) ?: return@launch
+            if (item.active == !paused) return@launch
+            val deviceId = settingsRepository.getOrCreateDeviceId()
+            itemRepository.updateItem(item.copy(active = !paused), deviceId)
+            alarmCoordinator.reschedule(if (paused) "item_paused" else "item_resumed")
+            loadItemDetails()
+        }
+    }
+
     fun deleteItem() {
         viewModelScope.launch {
             val item = _uiState.value.item ?: return@launch
