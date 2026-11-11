@@ -415,6 +415,7 @@ fun MainAppNavigation(
                     uiState = uiState,
                     onNavigateToPermissions = { navController.navigate(Screen.Permissions.route) },
                     onNavigateToProfiles = { navController.navigate(Screen.Profiles.route) },
+                    onSetThemeMode = viewModel::setThemeMode,
                     onUpdateSnooze = viewModel::updateSnoozeMinutes,
                     onUpdateRingDuration = viewModel::updateRingDurationSeconds,
                     onUpdateSpeakReminders = viewModel::updateSpeakReminders,

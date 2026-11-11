@@ -19,6 +19,7 @@ import kotlinx.coroutines.launch
 import javax.inject.Inject
 
 data class SettingsUiState(
+    val themeMode: String = "system",
     val defaultSnoozeMinutes: Int = 10,
     val ringDurationSeconds: Int = 120,
     val vibrationEnabled: Boolean = true,
@@ -68,7 +69,13 @@ class SettingsViewModel @Inject constructor(
         )
     }.combine(_healthStatus) { state, health ->
         state.copy(healthAvailability = health.first, healthPermissionGranted = health.second)
+    }.combine(settingsRepository.themeModeFlow) { state, mode ->
+        state.copy(themeMode = mode)
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), SettingsUiState())
+
+    fun setThemeMode(mode: String) {
+        viewModelScope.launch { settingsRepository.setThemeMode(mode) }
+    }
 
     /** Re-reads Health Connect availability and permission (call when the screen is shown/resumed). */
     fun refreshHealthStatus() {

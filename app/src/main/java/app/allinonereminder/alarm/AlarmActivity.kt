@@ -61,6 +61,7 @@ import androidx.lifecycle.viewModelScope
 import app.allinonereminder.data.repository.ItemRepository
 import app.allinonereminder.data.repository.MealSessionRepository
 import app.allinonereminder.data.repository.OccurrenceRepository
+import app.allinonereminder.data.repository.SettingsRepository
 import app.allinonereminder.data.repository.ProfileRepository
 import app.allinonereminder.data.repository.ScheduleRepository
 import app.allinonereminder.model.Item
@@ -77,6 +78,7 @@ import app.allinonereminder.schedule.SchedulingEngine
 import dagger.hilt.android.AndroidEntryPoint
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -394,6 +396,9 @@ class AlarmViewModel @Inject constructor(
 @AndroidEntryPoint
 class AlarmActivity : ComponentActivity() {
 
+    @Inject
+    lateinit var settingsRepository: SettingsRepository
+
     companion object {
         const val ACTION_TAKE_NOTIFICATION = "app.allinonereminder.action.TAKE_NOTIFICATION"
     }
@@ -417,8 +422,10 @@ class AlarmActivity : ComponentActivity() {
             viewModel.loadOccurrences(occurrenceIds)
         }
 
+        val initialThemeMode = kotlinx.coroutines.runBlocking { settingsRepository.themeModeFlow.first() }
         setContent {
-            app.allinonereminder.ui.theme.AllInOneReminderTheme {
+            val themeMode by settingsRepository.themeModeFlow.collectAsState(initial = initialThemeMode)
+            app.allinonereminder.ui.theme.AppTheme(themeMode = themeMode) {
                 Surface(
                     modifier = Modifier.fillMaxSize(),
                     color = MaterialTheme.colorScheme.background

@@ -100,7 +100,15 @@ fun TodayScreen(
             OccurrenceStatus.PENDING, OccurrenceStatus.RINGING,
             OccurrenceStatus.SNOOZED, OccurrenceStatus.DEFERRED_MEAL
         )
-        val upNext = visible.filter { it.occurrence.status in open }
+        val upNext = visible.filter { it.occurrence.status in open }.sortedBy { it.occurrence.dueAt }
+        // Re-group every minute so items move into "Overdue" as their time passes.
+        val nowMillis by produceState(System.currentTimeMillis()) {
+            while (true) {
+                kotlinx.coroutines.delay(60_000L)
+                value = System.currentTimeMillis()
+            }
+        }
+        val pendingGroups = groupPendingByTimeOfDay(upNext, nowMillis)
         val finished = visible.filter { it.occurrence.status !in open }
         val doneCount = visible.count { it.occurrence.status == OccurrenceStatus.TAKEN }
 
@@ -218,6 +226,30 @@ fun TodayScreen(
                 }
             }
 
+            if (upNext.isNotEmpty()) {
+                item { SectionHeader(title = "Pending today", count = upNext.size) }
+                pendingGroups.forEach { group ->
+                    item(key = "group-${group.label}") {
+                        PendingGroupLabel(group.label, group.overdue, group.items.size)
+                    }
+                    items(group.items, key = { it.occurrence.id }) { occUi ->
+                        Box(modifier = Modifier.padding(horizontal = 16.dp)) {
+                            OccurrenceTimelineCard(
+                                uiModel = occUi,
+                                showProfileBadge = uiState.selectedProfileId == null,
+                                isLate = group.overdue,
+                                onTake = { onTake(occUi) },
+                                onSnooze = { onSnooze(occUi) },
+                                onSkip = { skippingOcc = occUi },
+                                onClick = { onOccurrenceClick(occUi) }
+                            )
+                        }
+                    }
+                }
+            } else if (finished.isNotEmpty()) {
+                item { AllDoneCard(done = finished.size) }
+            }
+
             if (uiState.asNeededItems.isNotEmpty()) {
                 item {
                     AsNeededSection(
@@ -230,22 +262,6 @@ fun TodayScreen(
 
             if (visible.isEmpty() && uiState.asNeededItems.isEmpty()) {
                 item { TodayEmptyState() }
-            }
-
-            if (upNext.isNotEmpty()) {
-                item { SectionHeader(title = "Up next", count = upNext.size) }
-                items(upNext, key = { it.occurrence.id }) { occUi ->
-                    Box(modifier = Modifier.padding(horizontal = 16.dp)) {
-                        OccurrenceTimelineCard(
-                            uiModel = occUi,
-                            showProfileBadge = uiState.selectedProfileId == null,
-                            onTake = { onTake(occUi) },
-                            onSnooze = { onSnooze(occUi) },
-                            onSkip = { skippingOcc = occUi },
-                            onClick = { onOccurrenceClick(occUi) }
-                        )
-                    }
-                }
             }
 
             if (finished.isNotEmpty()) {
@@ -641,6 +657,99 @@ private fun SectionHeader(title: String, count: Int) {
     }
 }
 
+/** One block of the "Pending today" list: overdue first, then the rest of the day by time. */
+internal data class PendingGroup(val label: String, val overdue: Boolean, val items: List<OccurrenceUiModel>)
+
+internal fun groupPendingByTimeOfDay(pending: List<OccurrenceUiModel>, nowMillis: Long): List<PendingGroup> {
+    val zone = ZoneId.systemDefault()
+    // Ringing items are "now", not late; everything else past its time is overdue.
+    val (overdue, later) = pending.partition {
+        it.occurrence.status != OccurrenceStatus.RINGING && it.occurrence.dueAt < nowMillis
+    }
+    val groups = mutableListOf<PendingGroup>()
+    if (overdue.isNotEmpty()) groups += PendingGroup("Overdue", true, overdue)
+    later.groupBy { occ ->
+        when (Instant.ofEpochMilli(occ.occurrence.dueAt).atZone(zone).hour) {
+            in 5..11 -> 0
+            in 12..16 -> 1
+            in 17..20 -> 2
+            else -> 3
+        }
+    }.toSortedMap().forEach { (slot, list) ->
+        val label = when (slot) {
+            0 -> "Morning"
+            1 -> "Afternoon"
+            2 -> "Evening"
+            else -> "Night"
+        }
+        groups += PendingGroup(label, false, list)
+    }
+    return groups
+}
+
+@Composable
+private fun PendingGroupLabel(label: String, overdue: Boolean, count: Int) {
+    val color = if (overdue) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(start = 20.dp, end = 20.dp, top = 4.dp)
+            .semantics(mergeDescendants = true) {},
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Icon(
+            imageVector = when (label) {
+                "Overdue" -> Icons.Default.Warning
+                "Morning" -> Icons.Default.WbSunny
+                "Afternoon" -> Icons.Default.LightMode
+                "Evening" -> Icons.Default.WbTwilight
+                else -> Icons.Default.Bedtime
+            },
+            contentDescription = null,
+            tint = color,
+            modifier = Modifier.size(16.dp)
+        )
+        Spacer(modifier = Modifier.width(6.dp))
+        Text(
+            text = "$label · $count",
+            style = MaterialTheme.typography.labelLarge,
+            color = color
+        )
+    }
+}
+
+@Composable
+private fun AllDoneCard(done: Int) {
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)
+    ) {
+        Row(modifier = Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+            Icon(
+                Icons.Default.CheckCircle,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                modifier = Modifier.size(32.dp)
+            )
+            Spacer(modifier = Modifier.width(12.dp))
+            Column {
+                Text(
+                    "Nothing pending today",
+                    style = MaterialTheme.typography.titleMedium,
+                    color = MaterialTheme.colorScheme.onPrimaryContainer
+                )
+                Text(
+                    "All $done done. Nice work!",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onPrimaryContainer
+                )
+            }
+        }
+    }
+}
+
 @Composable
 private fun TodayEmptyState() {
     Column(
@@ -679,6 +788,7 @@ private fun TodayEmptyState() {
 private fun OccurrenceTimelineCard(
     uiModel: OccurrenceUiModel,
     showProfileBadge: Boolean,
+    isLate: Boolean = false,
     onTake: () -> Unit,
     onSnooze: () -> Unit,
     onSkip: () -> Unit,
@@ -716,16 +826,17 @@ private fun OccurrenceTimelineCard(
                     }
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Icon(
-                            Icons.Default.Schedule,
+                            if (isLate) Icons.Default.Warning else Icons.Default.Schedule,
                             contentDescription = null,
-                            tint = MaterialTheme.colorScheme.primary,
+                            tint = if (isLate) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary,
                             modifier = Modifier.size(14.dp)
                         )
                         Spacer(modifier = Modifier.width(4.dp))
+                        val timeText = if (isLate) "Late, was $formattedTime" else formattedTime
                         Text(
-                            text = listOf(formattedTime, doseText).filter { it.isNotBlank() }.joinToString("  ·  "),
+                            text = listOf(timeText, doseText).filter { it.isNotBlank() }.joinToString("  ·  "),
                             style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                            color = if (isLate) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
                     if (uiModel.stockStatus != null) {
