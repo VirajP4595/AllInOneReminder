@@ -56,6 +56,7 @@ class SettingsRepository(
         val KEY_DEVICE_ID = stringPreferencesKey("device_id")
         val KEY_LAST_RESCHEDULE_ERROR = stringPreferencesKey("last_reschedule_error")
         val KEY_THEME_MODE = stringPreferencesKey("theme_mode")
+        val KEY_NEXT_ALARM_AT = androidx.datastore.preferences.core.longPreferencesKey("next_alarm_at")
 
         /** Stored sound value meaning "use the phone's default sound". Older installs stored names like "alarm". */
         const val SOUND_DEFAULT = "default"
@@ -63,6 +64,15 @@ class SettingsRepository(
 
     /** One of [ThemeMode]; defaults to following the phone. */
     val themeModeFlow: Flow<String> = dataStore.data.map { ThemeMode.normalize(it[KEY_THEME_MODE]) }
+
+    /** When the coordinator last registered the next alarm for (epoch ms), or null when none is due. */
+    val nextAlarmAtFlow: Flow<Long?> = dataStore.data.map { it[KEY_NEXT_ALARM_AT] }
+
+    suspend fun setNextAlarmAt(epochMillis: Long?) {
+        dataStore.edit { prefs ->
+            if (epochMillis == null) prefs.remove(KEY_NEXT_ALARM_AT) else prefs[KEY_NEXT_ALARM_AT] = epochMillis
+        }
+    }
 
     suspend fun setThemeMode(mode: String) {
         dataStore.edit { it[KEY_THEME_MODE] = ThemeMode.normalize(mode) }

@@ -66,9 +66,13 @@ class AlarmCoordinator @Inject constructor(
             try {
                 val result = doReschedule(callerReason)
                 settingsRepository.clearRescheduleError()
+                settingsRepository.setNextAlarmAt(if (result.registered) result.dueAtEpochMillis else null)
                 result
             } catch (t: Throwable) {
+                if (t is kotlinx.coroutines.CancellationException) throw t
                 settingsRepository.recordRescheduleError(t.javaClass.simpleName, System.currentTimeMillis())
+                // Try again in the background instead of waiting for the user to tap Retry.
+                runCatching { RescheduleRetryWorker.enqueue(context) }
                 throw t
             }
         }

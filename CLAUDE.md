@@ -8,3 +8,5 @@
 - Record every deviation from the plan in `docs/DECISIONS.md`.
 - Before opening a PR, run: `./gradlew lint test assembleDebug`.
 - Use the PR template in `.github/pull_request_template.md`.
+- Planned work is tracked in GitHub issue #92 (roadmap tracker); check it at the start of a session and tick items as PRs merge.
+- Releases publish automatically when a merge to `main` raises `versionName` in `app/build.gradle.kts`.

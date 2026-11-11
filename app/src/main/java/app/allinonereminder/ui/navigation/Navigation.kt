@@ -437,6 +437,9 @@ fun MainAppNavigation(
                         }
                     },
                     onCreateBackup = viewModel::createBackup,
+                    onEnableAutoBackup = viewModel::enableAutoBackup,
+                    onDisableAutoBackup = viewModel::disableAutoBackup,
+                    onBackUpNow = viewModel::backUpNow,
                     onInspectRestore = viewModel::inspectRestore,
                     onConfirmRestore = viewModel::confirmRestore,
                     onDismissRestorePreview = viewModel::dismissRestorePreview,
@@ -446,7 +449,10 @@ fun MainAppNavigation(
 
             // Permissions
             composable(Screen.Permissions.route) {
+                val nextAlarmAt by settingsRepository.nextAlarmAtFlow.collectAsState(initial = null)
                 PermissionHealthCheckScreen(
+                    nextAlarmAt = nextAlarmAt,
+                    onRescheduleNow = { alarmCoordinator.rescheduleAsync("User fix from alarm self-check") },
                     onSeedSampleData = {
                         coroutineScope.launch {
                             val msg = sampleDataSeeder.seedSampleData()

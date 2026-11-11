@@ -22,6 +22,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Warning
@@ -34,6 +35,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -56,7 +58,9 @@ import app.allinonereminder.alarm.AlarmReceiver
 @Composable
 fun PermissionHealthCheckScreen(
     onSeedSampleData: (() -> Unit)? = null,
-    onSendTestAlarm: (() -> Unit)? = null
+    onSendTestAlarm: (() -> Unit)? = null,
+    nextAlarmAt: Long? = null,
+    onRescheduleNow: (() -> Unit)? = null
 ) {
     val context = LocalContext.current
     var permissions by remember { mutableStateOf(PermissionChecker.checkAll(context)) }
@@ -108,6 +112,12 @@ fun PermissionHealthCheckScreen(
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
+            }
+
+            // Alarm self-check: is the next reminder really registered with the system?
+            item {
+                val status = remember(nextAlarmAt, permissions) { AlarmSelfCheck.check(context, nextAlarmAt) }
+                AlarmSelfCheckCard(status = status, onRescheduleNow = onRescheduleNow)
             }
 
             // Permission items
@@ -291,3 +301,57 @@ fun PermissionHealthCheckScreenPreview() {
     }
 }
 
+/** Result of comparing the reminder we expect to ring next with what the system has registered. */
+enum class AlarmSelfCheckStatus { NOTHING_DUE, REGISTERED, NOT_REGISTERED }
+
+object AlarmSelfCheck {
+    /**
+     * The system only reports the earliest alarm clock of any app. If that is at or before our
+     * expected time, ours may be hidden behind another app's alarm, which still counts as fine.
+     */
+    fun check(context: android.content.Context, expectedAt: Long?): AlarmSelfCheckStatus {
+        if (expectedAt == null) return AlarmSelfCheckStatus.NOTHING_DUE
+        val am = context.getSystemService(android.content.Context.ALARM_SERVICE) as android.app.AlarmManager
+        val next = runCatching { am.nextAlarmClock }.getOrNull() ?: return AlarmSelfCheckStatus.NOT_REGISTERED
+        return if (next.triggerTime <= expectedAt + 60_000L) AlarmSelfCheckStatus.REGISTERED
+        else AlarmSelfCheckStatus.NOT_REGISTERED
+    }
+}
+
+@Composable
+private fun AlarmSelfCheckCard(status: AlarmSelfCheckStatus, onRescheduleNow: (() -> Unit)?) {
+    val ok = status != AlarmSelfCheckStatus.NOT_REGISTERED
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(
+            containerColor = if (ok) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.errorContainer
+        )
+    ) {
+        Row(modifier = Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+            Icon(
+                if (ok) Icons.Default.CheckCircle else Icons.Default.Warning,
+                contentDescription = null,
+                tint = if (ok) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onErrorContainer
+            )
+            Spacer(modifier = Modifier.width(12.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    when (status) {
+                        AlarmSelfCheckStatus.NOTHING_DUE -> "No reminders waiting"
+                        AlarmSelfCheckStatus.REGISTERED -> "Next alarm is set"
+                        AlarmSelfCheckStatus.NOT_REGISTERED -> "Next alarm is not set"
+                    },
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.Bold
+                )
+                Text(
+                    if (ok) "The phone has the next reminder's alarm." else "The phone dropped the next reminder. Tap Fix to set it again.",
+                    style = MaterialTheme.typography.bodySmall
+                )
+            }
+            if (!ok && onRescheduleNow != null) {
+                TextButton(onClick = onRescheduleNow) { Text("Fix") }
+            }
+        }
+    }
+}
