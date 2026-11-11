@@ -332,19 +332,19 @@ private fun bucketColor(bucket: DayAdherenceBucket): Color {
 
 @Composable
 fun AdherenceLegend() {
-    Card(modifier = Modifier.fillMaxWidth()) {
+    Box(modifier = Modifier.fillMaxWidth()) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(12.dp),
+                .padding(horizontal = 4.dp, vertical = 4.dp),
             horizontalArrangement = Arrangement.SpaceAround,
             verticalAlignment = Alignment.CenterVertically
         ) {
             LegendItem(color = Color(0xFF43A047), label = "100%")
-            LegendItem(color = Color(0xFF66BB6A), label = "75%+")
+            LegendItem(color = Color(0xFF66BB6A), label = "80%+")
             LegendItem(color = Color(0xFFFFA726), label = "Partial")
             LegendItem(color = Color(0xFFE53935), label = "Missed")
-            LegendItem(color = Color(0xFFE0E0E0), label = "None", textColor = Color.Gray)
+            LegendItem(color = MaterialTheme.colorScheme.outlineVariant, label = "None", textColor = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
 }
@@ -397,7 +397,7 @@ fun HistoryOccurrenceCard(occ: Occurrence, item: Item) {
                 )
 
                 val zone = ZoneId.systemDefault()
-                val dueFormatter = DateTimeFormatter.ofPattern("hh:mm a")
+                val dueFormatter = DateTimeFormatter.ofPattern("h:mm a")
                 val dueTime = Instant.ofEpochMilli(occ.dueAt).atZone(zone).format(dueFormatter)
 
                 Spacer(modifier = Modifier.height(4.dp))
@@ -405,13 +405,13 @@ fun HistoryOccurrenceCard(occ: Occurrence, item: Item) {
                 if (actedAt != null) {
                     val actedTime = Instant.ofEpochMilli(actedAt).atZone(zone).format(dueFormatter)
                     Text(
-                        text = "Scheduled $dueTime • Logged at $actedTime",
+                        text = "Due $dueTime · Done $actedTime",
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.primary
                     )
                 } else {
                     Text(
-                        text = "Scheduled $dueTime",
+                        text = "Due $dueTime",
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
