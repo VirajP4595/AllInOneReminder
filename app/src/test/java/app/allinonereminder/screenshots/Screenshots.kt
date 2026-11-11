@@ -70,6 +70,7 @@ abstract class ScreenshotBase(private val suffix: String) {
     @Test fun permissions() = shot("08_permissions") { AllInOneReminderTheme { PermissionHealthCheckScreenPreview() } }
     @Test fun alarmGroup() = shot("09_alarm_group") { AllInOneReminderTheme { SampleAlarm() } }
     @Test fun progress() = shot("10_progress") { app.allinonereminder.ui.progress.ProgressScreenPreview() }
+    @Test fun history() = shot("11_history") { app.allinonereminder.ui.history.HistoryScreenPreview() }
 }
 
 @Config(sdk = [34], qualifiers = "w393dp-h852dp-xhdpi")
