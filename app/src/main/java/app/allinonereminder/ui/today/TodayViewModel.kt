@@ -55,6 +55,21 @@ private data class TodayDataBundle(
     val warningOcc: OccurrenceUiModel?
 )
 
+/** Points, level, streak and today's rings shown in the Today header. */
+data class TodayProgress(
+    val totalPoints: Int,
+    val level: Int,
+    val levelProgress: Float,
+    val pointsToNextLevel: Int,
+    val bestStreakDays: Int,
+    val medsPercent: Int?,
+    val hydrationPercent: Int?,
+    val movementPercent: Int?
+)
+
+/** Points needed per level. */
+const val POINTS_PER_LEVEL = 100
+
 data class TodayUiState(
     val profiles: List<Profile> = emptyList(),
     val selectedProfileId: String? = null, // null means "All"
@@ -67,6 +82,8 @@ data class TodayUiState(
     val asNeededItems: List<AsNeededUiModel> = emptyList(),
     val asNeededWarning: AsNeededUiModel? = null,
     val asNeededLimitItem: AsNeededUiModel? = null,
+    val progress: TodayProgress? = null,
+    val rewardMessage: String? = null,
     val isLoading: Boolean = true
 )
 
@@ -83,8 +100,48 @@ class TodayViewModel @Inject constructor(
     private val changeLogWriter: ChangeLogWriter,
     private val alarmCoordinator: AlarmCoordinator,
     private val stockEventRepository: StockEventRepository? = null,
-    private val refillAlertNotifier: RefillAlertNotifier? = null
+    private val refillAlertNotifier: RefillAlertNotifier? = null,
+    private val progressRepository: app.allinonereminder.data.repository.ProgressRepository? = null
 ) : ViewModel() {
+
+    private val _progress = MutableStateFlow<TodayProgress?>(null)
+    private val _reward = MutableStateFlow<String?>(null)
+
+    /** Set when the user logs a dose here, so the next points increase is celebrated once. */
+    @Volatile private var celebrateNextGain = false
+
+    private suspend fun refreshProgress(profileId: String?) {
+        val repo = progressRepository ?: return
+        val result = try {
+            repo.getGamificationProgress(profileId)
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            return
+        }
+        val today = LocalDate.now(ZoneId.systemDefault())
+        val rings = result.rings.firstOrNull { it.date == today }
+        val total = result.totalPoints
+        val previous = _progress.value?.totalPoints
+        _progress.value = TodayProgress(
+            totalPoints = total,
+            level = total / POINTS_PER_LEVEL + 1,
+            levelProgress = (total % POINTS_PER_LEVEL) / POINTS_PER_LEVEL.toFloat(),
+            pointsToNextLevel = POINTS_PER_LEVEL - (total % POINTS_PER_LEVEL),
+            bestStreakDays = result.streaks.maxOfOrNull { it.current } ?: 0,
+            medsPercent = rings?.meds?.takeIf { it.total > 0 }?.percent,
+            hydrationPercent = rings?.hydration?.takeIf { it.total > 0 }?.percent,
+            movementPercent = rings?.movement?.takeIf { it.total > 0 }?.percent
+        )
+        if (celebrateNextGain && previous != null && total > previous) {
+            celebrateNextGain = false
+            _reward.value = "+${total - previous} points! Keep it up"
+        }
+    }
+
+    fun consumeReward() {
+        _reward.value = null
+    }
 
     private val _selectedProfileId = MutableStateFlow<String?>(null)
     private val _doubleDoseWarning = MutableStateFlow<OccurrenceUiModel?>(null)
@@ -130,7 +187,9 @@ class TodayViewModel @Inject constructor(
         scheduleRepository.getAllActiveSchedules(),
         _asNeededWarning,
         _asNeededLimitItem,
-        stockEventRepository?.getAllCurrentStocksFlow() ?: flowOf(emptyMap<String, Double>())
+        stockEventRepository?.getAllCurrentStocksFlow() ?: flowOf(emptyMap<String, Double>()),
+        _progress,
+        _reward
     ) { args ->
         @Suppress("UNCHECKED_CAST")
         val profiles = args[0] as List<Profile>
@@ -148,6 +207,8 @@ class TodayViewModel @Inject constructor(
         val asNeededLimitItem = args[9] as AsNeededUiModel?
         @Suppress("UNCHECKED_CAST")
         val stockMap = args[10] as Map<String, Double>
+        val progress = args[11] as TodayProgress?
+        val reward = args[12] as String?
         val itemMap = allItems.associateBy { it.id }
         val profileMap = profiles.associateBy { it.id }
         val scheduleMap = allSchedules.associateBy { it.id }
@@ -223,9 +284,18 @@ class TodayViewModel @Inject constructor(
             asNeededItems = asNeededItems,
             asNeededWarning = asNeededWarning,
             asNeededLimitItem = asNeededLimitItem,
+            progress = progress,
+            rewardMessage = reward,
             isLoading = false
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), TodayUiState())
+
+    init {
+        viewModelScope.launch {
+            combine(occurrencesFlow, _selectedProfileId) { occs, profileId -> occs to profileId }
+                .collectLatest { (_, profileId) -> refreshProgress(profileId) }
+        }
+    }
 
     fun selectProfile(profileId: String?) {
         _selectedProfileId.value = profileId
@@ -254,6 +324,7 @@ class TodayViewModel @Inject constructor(
             // Stop ringing service if item was ringing
             AlarmRingService.stopForOccurrence(context, occ.id)
 
+            celebrateNextGain = true
             occurrenceRepository.markOccurrenceTaken(occ.id, now)
             refillAlertNotifier?.checkAndNotify(occ.itemId)
             alarmCoordinator.reschedule("taken_from_today")

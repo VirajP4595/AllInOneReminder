@@ -15,6 +15,9 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.progressBarRangeInfo
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
@@ -46,15 +49,34 @@ fun TodayScreen(
     onStartMeal: (MealType, String?) -> Unit = { _, _ -> },
     onEndMeal: (MealSession) -> Unit = {},
     onOccurrenceClick: (OccurrenceUiModel) -> Unit = {},
-    onRetryReschedule: () -> Unit = {}
+    onRetryReschedule: () -> Unit = {},
+    onRewardShown: () -> Unit = {}
 ) {
     var showMealDialog by remember { mutableStateOf(false) }
     var skippingOcc by remember { mutableStateOf<OccurrenceUiModel?>(null) }
+    val snackbarHostState = remember { SnackbarHostState() }
+    LaunchedEffect(uiState.rewardMessage) {
+        val msg = uiState.rewardMessage
+        if (msg != null) {
+            snackbarHostState.showSnackbar(msg, duration = SnackbarDuration.Short)
+            onRewardShown()
+        }
+    }
 
     Scaffold(
+        snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
             TopAppBar(
-                title = { Text("Today's Schedule", fontWeight = FontWeight.Bold) },
+                title = {
+                    Column {
+                        Text("Today", style = MaterialTheme.typography.headlineSmall)
+                        Text(
+                            text = java.time.LocalDate.now().format(DateTimeFormatter.ofPattern("EEEE, d MMMM")),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                },
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = MaterialTheme.colorScheme.background,
                     titleContentColor = MaterialTheme.colorScheme.onBackground
@@ -73,11 +95,24 @@ fun TodayScreen(
             )
         }
     ) { padding ->
-        Column(
+        val visible = uiState.occurrences.filter { it.occurrence.status != OccurrenceStatus.SUPERSEDED }
+        val open = listOf(
+            OccurrenceStatus.PENDING, OccurrenceStatus.RINGING,
+            OccurrenceStatus.SNOOZED, OccurrenceStatus.DEFERRED_MEAL
+        )
+        val upNext = visible.filter { it.occurrence.status in open }
+        val finished = visible.filter { it.occurrence.status !in open }
+        val doneCount = visible.count { it.occurrence.status == OccurrenceStatus.TAKEN }
+
+        LazyColumn(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(padding)
+                .padding(padding),
+            contentPadding = PaddingValues(bottom = 24.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
+            item {
+                Column {
             // Exact alarm warning banner when permission is not granted
             if (uiState.exactAlarmsDenied) {
                 Card(
@@ -154,76 +189,69 @@ fun TodayScreen(
                 }
             }
 
-            // Profile selector chip row
-            ProfileFilterRow(
-                profiles = uiState.profiles,
-                selectedProfileId = uiState.selectedProfileId,
-                onProfileSelected = onProfileSelected
-            )
+                }
+            }
 
-            // Header card: Next alarm countdown + "Starting a meal" quick button
-            NextAlarmCountdownHeader(
-                nextAlarmEpochMillis = uiState.nextAlarmEpochMillis,
-                onStartMealClick = { showMealDialog = true }
-            )
+            item {
+                ProfileFilterRow(
+                    profiles = uiState.profiles,
+                    selectedProfileId = uiState.selectedProfileId,
+                    onProfileSelected = onProfileSelected
+                )
+            }
 
-            // Active meal session banner if in progress
+            item {
+                TodayHero(
+                    progress = uiState.progress,
+                    done = doneCount,
+                    total = visible.size,
+                    nextAlarmEpochMillis = uiState.nextAlarmEpochMillis
+                )
+            }
+
             if (uiState.activeMealSession != null) {
-                ActiveMealSessionCard(
-                    session = uiState.activeMealSession,
-                    onDoneEating = { onEndMeal(uiState.activeMealSession) }
-                )
+                item {
+                    ActiveMealSessionCard(
+                        session = uiState.activeMealSession,
+                        onDoneEating = { onEndMeal(uiState.activeMealSession) }
+                    )
+                }
             }
 
-            // As-needed (PRN) items have no planned times; show a Take now card for each.
             if (uiState.asNeededItems.isNotEmpty()) {
-                AsNeededSection(
-                    items = uiState.asNeededItems,
-                    showProfileBadge = uiState.selectedProfileId == null,
-                    onTakeNow = onTakeAsNeeded
-                )
+                item {
+                    AsNeededSection(
+                        items = uiState.asNeededItems,
+                        showProfileBadge = uiState.selectedProfileId == null,
+                        onTakeNow = onTakeAsNeeded
+                    )
+                }
             }
 
-            // Timeline of occurrences
-            if (uiState.occurrences.isEmpty()) {
-                if (uiState.asNeededItems.isEmpty()) {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .padding(24.dp),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            Icon(
-                                imageVector = Icons.Default.CheckCircleOutline,
-                                contentDescription = null,
-                                tint = MaterialTheme.colorScheme.primary,
-                                modifier = Modifier.size(64.dp)
-                            )
-                            Spacer(modifier = Modifier.height(12.dp))
-                            Text(
-                                text = "No doses or events scheduled for today",
-                                style = MaterialTheme.typography.titleMedium,
-                                fontWeight = FontWeight.SemiBold
-                            )
-                            Spacer(modifier = Modifier.height(4.dp))
-                            Text(
-                                text = "Tap 'Items' below to add medications or appointments.",
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
+            if (visible.isEmpty() && uiState.asNeededItems.isEmpty()) {
+                item { TodayEmptyState() }
+            }
+
+            if (upNext.isNotEmpty()) {
+                item { SectionHeader(title = "Up next", count = upNext.size) }
+                items(upNext, key = { it.occurrence.id }) { occUi ->
+                    Box(modifier = Modifier.padding(horizontal = 16.dp)) {
+                        OccurrenceTimelineCard(
+                            uiModel = occUi,
+                            showProfileBadge = uiState.selectedProfileId == null,
+                            onTake = { onTake(occUi) },
+                            onSnooze = { onSnooze(occUi) },
+                            onSkip = { skippingOcc = occUi },
+                            onClick = { onOccurrenceClick(occUi) }
+                        )
                     }
                 }
-            } else {
-                LazyColumn(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .weight(1f),
-                    contentPadding = PaddingValues(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    items(uiState.occurrences, key = { it.occurrence.id }) { occUi ->
+            }
+
+            if (finished.isNotEmpty()) {
+                item { SectionHeader(title = "Done today", count = finished.size) }
+                items(finished, key = { it.occurrence.id }) { occUi ->
+                    Box(modifier = Modifier.padding(horizontal = 16.dp)) {
                         OccurrenceTimelineCard(
                             uiModel = occUi,
                             showProfileBadge = uiState.selectedProfileId == null,
@@ -429,60 +457,220 @@ private fun ProfileFilterRow(
 }
 
 @Composable
-private fun NextAlarmCountdownHeader(
-    nextAlarmEpochMillis: Long?,
-    onStartMealClick: () -> Unit
+private fun TodayHero(
+    progress: app.allinonereminder.ui.today.TodayProgress?,
+    done: Int,
+    total: Int,
+    nextAlarmEpochMillis: Long?
 ) {
-    val primary = MaterialTheme.colorScheme.primary
-    val onPrimary = MaterialTheme.colorScheme.onPrimary
+    val onHero = Color.White
+    val hour = java.time.LocalTime.now().hour
+    val greeting = when (hour) {
+        in 5..11 -> "Good morning"
+        in 12..16 -> "Good afternoon"
+        else -> "Good evening"
+    }
+    val allDone = total > 0 && done >= total
+    val fraction = if (total == 0) 0f else done.toFloat() / total
+    val headline = when {
+        total == 0 -> "Nothing due today"
+        allDone -> "All done for today!"
+        else -> "$done of $total done"
+    }
+    val subline = when {
+        allDone -> "Great job. See you tomorrow."
+        nextAlarmEpochMillis != null -> "Next at " + Instant.ofEpochMilli(nextAlarmEpochMillis)
+            .atZone(ZoneId.systemDefault()).format(DateTimeFormatter.ofPattern("h:mm a"))
+        total == 0 -> "Add a reminder from Items."
+        else -> "Nothing else scheduled."
+    }
+
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 6.dp)
+            .padding(horizontal = 16.dp)
             .clip(MaterialTheme.shapes.large)
             .background(
                 androidx.compose.ui.graphics.Brush.linearGradient(
-                    listOf(primary, MaterialTheme.colorScheme.secondary)
+                    listOf(MaterialTheme.colorScheme.primary, Color(0xFF00463E))
                 )
             )
+            .padding(20.dp)
     ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 20.dp, vertical = 18.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween
-        ) {
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = "Next reminder",
-                    style = MaterialTheme.typography.labelLarge,
-                    color = onPrimary.copy(alpha = 0.85f)
-                )
-                val timeText = if (nextAlarmEpochMillis != null) {
-                    val time = Instant.ofEpochMilli(nextAlarmEpochMillis).atZone(ZoneId.systemDefault())
-                    time.format(DateTimeFormatter.ofPattern("hh:mm a"))
-                } else {
-                    "All done for today"
+        Column {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(greeting, style = MaterialTheme.typography.labelLarge, color = onHero.copy(alpha = 0.85f))
+                    Spacer(modifier = Modifier.height(2.dp))
+                    Text(headline, style = MaterialTheme.typography.headlineSmall, color = onHero)
+                    Spacer(modifier = Modifier.height(2.dp))
+                    Text(subline, style = MaterialTheme.typography.bodyMedium, color = onHero.copy(alpha = 0.85f))
                 }
-                Text(
-                    text = timeText,
-                    style = MaterialTheme.typography.headlineMedium,
-                    color = onPrimary
+                Spacer(modifier = Modifier.width(12.dp))
+                ProgressRing(
+                    fraction = fraction,
+                    label = if (allDone) "100%" else "${(fraction * 100).toInt()}%",
+                    color = onHero,
+                    track = onHero.copy(alpha = 0.22f)
                 )
             }
 
-            OutlinedButton(
-                onClick = onStartMealClick,
-                modifier = Modifier.defaultMinSize(minHeight = 44.dp),
-                colors = ButtonDefaults.outlinedButtonColors(contentColor = onPrimary),
-                border = androidx.compose.foundation.BorderStroke(1.dp, onPrimary.copy(alpha = 0.6f))
-            ) {
-                Icon(Icons.Default.Restaurant, contentDescription = null, modifier = Modifier.size(18.dp))
-                Spacer(modifier = Modifier.width(6.dp))
-                Text("Starting meal")
+            if (progress != null) {
+                Spacer(modifier = Modifier.height(16.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    StatPill(
+                        icon = Icons.Default.LocalFireDepartment,
+                        text = if (progress.bestStreakDays == 1) "1 day" else "${progress.bestStreakDays} days",
+                        contentDescription = "Streak: ${progress.bestStreakDays} days",
+                        modifier = Modifier.weight(1f)
+                    )
+                    StatPill(
+                        icon = Icons.Default.Star,
+                        text = "${progress.totalPoints} pts",
+                        contentDescription = "${progress.totalPoints} points",
+                        modifier = Modifier.weight(1f)
+                    )
+                    StatPill(
+                        icon = Icons.Default.EmojiEvents,
+                        text = "Level ${progress.level}",
+                        contentDescription = "Level ${progress.level}",
+                        modifier = Modifier.weight(1f)
+                    )
+                }
+                Spacer(modifier = Modifier.height(12.dp))
+                LinearProgressIndicator(
+                    progress = { progress.levelProgress },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(6.dp)
+                        .clip(CircleShape),
+                    color = onHero,
+                    trackColor = onHero.copy(alpha = 0.22f),
+                    drawStopIndicator = {}
+                )
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                    text = "${progress.pointsToNextLevel} points to level ${progress.level + 1}",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = onHero.copy(alpha = 0.85f)
+                )
             }
         }
+    }
+}
+
+@Composable
+private fun ProgressRing(
+    fraction: Float,
+    label: String,
+    color: Color,
+    track: Color,
+    size: androidx.compose.ui.unit.Dp = 84.dp
+) {
+    Box(
+        modifier = Modifier
+            .size(size)
+            .androidx_semantics_progress(fraction),
+        contentAlignment = Alignment.Center
+    ) {
+        androidx.compose.foundation.Canvas(modifier = Modifier.fillMaxSize()) {
+            val stroke = 9.dp.toPx()
+            val arcSize = androidx.compose.ui.geometry.Size(this.size.width - stroke, this.size.height - stroke)
+            val topLeft = androidx.compose.ui.geometry.Offset(stroke / 2, stroke / 2)
+            val style = androidx.compose.ui.graphics.drawscope.Stroke(width = stroke, cap = androidx.compose.ui.graphics.StrokeCap.Round)
+            drawArc(track, -90f, 360f, false, topLeft = topLeft, size = arcSize, style = style)
+            if (fraction > 0f) {
+                drawArc(color, -90f, 360f * fraction.coerceIn(0f, 1f), false, topLeft = topLeft, size = arcSize, style = style)
+            }
+        }
+        Text(label, style = MaterialTheme.typography.titleMedium, color = color)
+    }
+}
+
+private fun Modifier.androidx_semantics_progress(fraction: Float): Modifier =
+    this.then(
+        Modifier.semantics(mergeDescendants = true) {
+            progressBarRangeInfo = androidx.compose.ui.semantics.ProgressBarRangeInfo(fraction.coerceIn(0f, 1f), 0f..1f)
+        }
+    )
+
+@Composable
+private fun StatPill(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    text: String,
+    contentDescription: String,
+    modifier: Modifier = Modifier
+) {
+    Row(
+        modifier = modifier
+            .clip(CircleShape)
+            .background(Color.White.copy(alpha = 0.16f))
+            .semantics(mergeDescendants = true) { this.contentDescription = contentDescription }
+            .padding(horizontal = 10.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.Center
+    ) {
+        Icon(icon, contentDescription = null, tint = Color.White, modifier = Modifier.size(16.dp))
+        Spacer(modifier = Modifier.width(4.dp))
+        Text(text, style = MaterialTheme.typography.labelLarge, color = Color.White, maxLines = 1)
+    }
+}
+
+@Composable
+private fun SectionHeader(title: String, count: Int) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(start = 20.dp, end = 20.dp, top = 8.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(title, style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
+        Box(
+            modifier = Modifier
+                .clip(CircleShape)
+                .background(MaterialTheme.colorScheme.primaryContainer)
+                .padding(horizontal = 10.dp, vertical = 2.dp)
+        ) {
+            Text(
+                "$count",
+                style = MaterialTheme.typography.labelLarge,
+                color = MaterialTheme.colorScheme.onPrimaryContainer
+            )
+        }
+    }
+}
+
+@Composable
+private fun TodayEmptyState() {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 32.dp, vertical = 32.dp),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Box(
+            modifier = Modifier
+                .size(88.dp)
+                .clip(CircleShape)
+                .background(MaterialTheme.colorScheme.primaryContainer),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(
+                Icons.Default.WbSunny,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                modifier = Modifier.size(44.dp)
+            )
+        }
+        Spacer(modifier = Modifier.height(16.dp))
+        Text("Your day is clear", style = MaterialTheme.typography.titleLarge)
+        Spacer(modifier = Modifier.height(4.dp))
+        Text(
+            text = "Add medicines, water, walks or visits from the Items tab and they will show up here.",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            textAlign = androidx.compose.ui.text.style.TextAlign.Center
+        )
     }
 }
 
@@ -875,13 +1063,35 @@ fun TodayScreenPreview() {
                 profiles = listOf(sampleProfile),
                 occurrences = listOf(
                     OccurrenceUiModel(
+                        occurrence = sampleOcc.copy(id = "occ-0", status = OccurrenceStatus.TAKEN, dueAt = sampleOcc.dueAt - 4 * 3600_000L),
+                        item = sampleItem.copy(id = "item-0", name = "Vitamin D3", dosageAmount = "1", dosageUnit = "capsule"),
+                        profile = sampleProfile,
+                        schedule = null
+                    ),
+                    OccurrenceUiModel(
                         occurrence = sampleOcc,
                         item = sampleItem,
                         profile = sampleProfile,
                         schedule = null
+                    ),
+                    OccurrenceUiModel(
+                        occurrence = sampleOcc.copy(id = "occ-2", dueAt = sampleOcc.dueAt + 3 * 3600_000L),
+                        item = sampleItem.copy(id = "item-2", type = ItemType.WATER_DRINK, name = "Water", dosageAmount = "1", dosageUnit = "glass"),
+                        profile = sampleProfile,
+                        schedule = null
                     )
                 ),
-                nextAlarmEpochMillis = System.currentTimeMillis() + 3600_000L
+                nextAlarmEpochMillis = System.currentTimeMillis() + 3600_000L,
+                progress = TodayProgress(
+                    totalPoints = 245,
+                    level = 3,
+                    levelProgress = 0.45f,
+                    pointsToNextLevel = 55,
+                    bestStreakDays = 6,
+                    medsPercent = 50,
+                    hydrationPercent = 0,
+                    movementPercent = null
+                )
             )
         )
     }
