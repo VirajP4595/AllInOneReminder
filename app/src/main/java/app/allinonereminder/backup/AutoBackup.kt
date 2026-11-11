@@ -199,7 +199,7 @@ object AutoBackup {
             .setContentIntent(pending)
             .setAutoCancel(true)
             .build()
-        runCatching { NotificationManagerCompat.from(context).notify(NOTIFICATION_ID, notification) }
+        runCatching { nm.notify(NOTIFICATION_ID, notification) }
     }
 
     private fun folderDisplayName(tree: Uri): String =
