@@ -118,8 +118,8 @@ class TodayViewModelTest {
         )
 
         val summary = ItemsViewModel.formatSchedulesSummary(listOf(schedule1, schedule2))
-        assertThat(summary).contains("at 8:00 AM, Every day")
-        assertThat(summary).contains("30m before dinner, Weekdays")
+        assertThat(summary).contains("8:00 AM daily")
+        assertThat(summary).contains("30 min before dinner on weekdays")
     }
 
     @Test
@@ -458,8 +458,8 @@ class TodayViewModelTest {
         )
 
         val summary = ItemsViewModel.formatSchedulesSummary(listOf(monthly, lastFriday, interval, asNeeded))
-        assertThat(summary).contains("at 8:00 AM, Monthly on day 15")
-        assertThat(summary).contains("Monthly on the last Fri")
+        assertThat(summary).contains("8:00 AM monthly on day 15")
+        assertThat(summary).ignoringCase().contains("monthly on the last Fri")
         assertThat(summary).contains("Every 4 h from 8:00 AM to 8:00 PM")
         assertThat(summary).contains("250 — As needed")
     }

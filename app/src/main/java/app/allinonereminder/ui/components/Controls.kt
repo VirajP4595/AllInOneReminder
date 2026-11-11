@@ -76,7 +76,8 @@ fun AppTextField(
     keyboardOptions: KeyboardOptions = KeyboardOptions.Default,
     keyboardActions: KeyboardActions = KeyboardActions.Default,
     singleLine: Boolean = false,
-    maxLines: Int = if (singleLine) 1 else Int.MAX_VALUE
+    maxLines: Int = if (singleLine) 1 else Int.MAX_VALUE,
+    minLines: Int = 1
 ) {
     OutlinedTextField(
         value = value,
@@ -94,6 +95,7 @@ fun AppTextField(
         keyboardActions = keyboardActions,
         singleLine = singleLine,
         maxLines = maxLines,
+        minLines = minLines,
         shape = RoundedCornerShape(16.dp),
         colors = OutlinedTextFieldDefaults.colors(
             focusedContainerColor = MaterialTheme.colorScheme.surfaceContainerLowest,
@@ -417,5 +419,26 @@ fun SettingsNavCard(
 }
 
 /** Black or white, whichever is readable on [background] (profile colours can be light). */
-fun readableTextColor(background: Color): Color =
-    if (background.luminance() > 0.4f) Color(0xFF1B1B1B) else Color.White
+fun readableTextColor(background: Color): Color {
+    // Pick whichever of near-black / white has the higher WCAG contrast ratio on this colour.
+    val l = background.luminance()
+    val dark = Color(0xFF1B1B1B)
+    val contrastWithWhite = 1.05f / (l + 0.05f)
+    val contrastWithDark = (l + 0.05f) / (dark.luminance() + 0.05f)
+    return if (contrastWithDark >= contrastWithWhite) dark else Color.White
+}
+
+/** The app's standard card: light surface with a hairline border, no shadow. */
+@Composable
+fun AppCard(
+    modifier: Modifier = Modifier,
+    content: @Composable ColumnScope.() -> Unit
+) {
+    Card(
+        modifier = modifier,
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLowest),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
+        content = content
+    )
+}

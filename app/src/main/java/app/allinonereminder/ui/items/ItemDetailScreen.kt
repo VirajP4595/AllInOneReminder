@@ -98,7 +98,9 @@ fun ItemDetailScreen(
             item {
                 Card(
                     modifier = Modifier.fillMaxWidth(),
-                    elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLowest),
+        border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
                 ) {
                     Column(modifier = Modifier.padding(16.dp)) {
                         Row(
@@ -106,18 +108,21 @@ fun ItemDetailScreen(
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Text(
-                                text = item.name,
-                                style = MaterialTheme.typography.headlineSmall,
-                                fontWeight = FontWeight.Bold
-                            )
+                            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
+                                app.allinonereminder.ui.components.TypeBadge(item.type, size = 56.dp)
+                                Spacer(modifier = Modifier.width(14.dp))
+                                Text(
+                                    text = item.name,
+                                    style = MaterialTheme.typography.headlineSmall
+                                )
+                            }
                             if (item.criticality == Criticality.CRITICAL) {
                                 Surface(
                                     color = MaterialTheme.colorScheme.errorContainer,
                                     shape = RoundedCornerShape(8.dp)
                                 ) {
                                     Text(
-                                        text = "CRITICAL",
+                                        text = "Must not miss",
                                         color = MaterialTheme.colorScheme.onErrorContainer,
                                         style = MaterialTheme.typography.labelSmall,
                                         fontWeight = FontWeight.Bold,
@@ -129,7 +134,7 @@ fun ItemDetailScreen(
 
                         Spacer(modifier = Modifier.height(4.dp))
                         Text(
-                            text = "${item.dosageAmount} ${item.dosageUnit} ${item.form ?: ""}",
+                            text = app.allinonereminder.model.doseLabel(null, item),
                             style = MaterialTheme.typography.titleMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )

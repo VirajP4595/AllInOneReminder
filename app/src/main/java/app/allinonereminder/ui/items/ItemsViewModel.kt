@@ -144,29 +144,29 @@ class ItemsViewModel @Inject constructor(
         @Suppress("UNUSED_PARAMETER")
         fun formatSchedulesSummary(schedules: List<Schedule>, item: Item? = null): String {
             if (schedules.isEmpty()) return "No schedule configured"
-            return schedules.joinToString("; ") { sched ->
+            return schedules.joinToString(" · ") { sched ->
                 val recurrence = when (sched.recurrence) {
-                    RecurrenceType.DAILY -> "Every day"
-                    RecurrenceType.WEEKDAYS -> "Weekdays"
-                    RecurrenceType.EVERY_N_DAYS -> "Every ${sched.intervalN ?: 1} days"
+                    RecurrenceType.DAILY -> "daily"
+                    RecurrenceType.WEEKDAYS -> "on weekdays"
+                    RecurrenceType.EVERY_N_DAYS -> "every ${sched.intervalN ?: 1} days"
                     RecurrenceType.EVERY_N_WEEKS -> {
                         val n = sched.intervalN ?: 1
                         val days = formatWeekdayMask(sched.weekdayMask)
-                        if (n == 1) "Specific days ($days)" else "Every $n weeks ($days)"
+                        if (n == 1) "on $days" else "every $n weeks on $days"
                     }
                     RecurrenceType.MONTHLY -> {
                         val day = sched.dayOfMonth
                         val nth = sched.nthWeek
                         when {
-                            day != null -> "Monthly on day $day"
+                            day != null -> "monthly on day $day"
                             nth != null -> {
                                 val weekdayIndex = (0..6).firstOrNull {
                                     ((sched.weekdayMask ?: 0) and (1 shl it)) != 0
                                 }
                                 val weekday = weekdayNames.getOrNull(weekdayIndex ?: -1) ?: "day"
-                                "Monthly on the ${nthWeekLabel(nth)} $weekday"
+                                "monthly on the ${nthWeekLabel(nth)} $weekday"
                             }
-                            else -> "Monthly"
+                            else -> "monthly"
                         }
                     }
                     RecurrenceType.INTERVAL -> {
@@ -176,23 +176,23 @@ class ItemsViewModel @Inject constructor(
                         "Every $hours h from ${formatMinuteOfDay(start)} to ${formatMinuteOfDay(end)}"
                     }
                     RecurrenceType.PRN -> "As needed"
-                    RecurrenceType.ONCE -> "Once"
+                    RecurrenceType.ONCE -> "once"
                 }
 
                 val timing = when {
                     sched.recurrence == RecurrenceType.PRN -> ""
                     sched.recurrence == RecurrenceType.INTERVAL -> ""
                     sched.anchorType == ScheduleAnchorType.FIXED ->
-                        "at ${formatMinuteOfDay(sched.minuteOfDay ?: 0)}, "
+                        formatMinuteOfDay(sched.minuteOfDay ?: 0)
                     else -> {
                         val meal = sched.meal?.name?.lowercase() ?: "meal"
                         val rel = when (sched.relation) {
-                            MealRelation.BEFORE -> "${sched.offsetMinutes ?: 0}m before"
+                            MealRelation.BEFORE -> "${sched.offsetMinutes ?: 0} min before"
                             MealRelation.WITH -> "with"
-                            MealRelation.AFTER -> "${sched.offsetMinutes ?: 0}m after"
+                            MealRelation.AFTER -> "${sched.offsetMinutes ?: 0} min after"
                             null -> "at"
                         }
-                        "$rel $meal, "
+                        "$rel $meal"
                     }
                 }
 
@@ -207,7 +207,13 @@ class ItemsViewModel @Inject constructor(
                     sched.validUntil != null -> " (until ${sched.validUntil})"
                     else -> ""
                 }
-                "$dose$timing$recurrence$validity"
+                // "8:00 AM daily", "30 min before dinner on weekdays"; with no time, "As needed".
+                val core = if (timing.isEmpty()) {
+                    recurrence.replaceFirstChar { it.uppercase() }
+                } else {
+                    "${timing.replaceFirstChar { it.uppercase() }} $recurrence"
+                }
+                "$dose$core$validity"
             }
         }
     }

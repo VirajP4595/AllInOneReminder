@@ -230,7 +230,8 @@ fun MainAppNavigation(
                             navController.navigate("item/detail/${occ.item.id}")
                         }
                     },
-                    onRetryReschedule = viewModel::retryReschedule
+                    onRetryReschedule = viewModel::retryReschedule,
+                    onRewardShown = viewModel::consumeReward
                 )
             }
 

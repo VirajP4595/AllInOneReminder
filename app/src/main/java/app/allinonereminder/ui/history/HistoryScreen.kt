@@ -25,6 +25,10 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
+import app.allinonereminder.ui.components.*
+import app.allinonereminder.ui.theme.AllInOneReminderTheme
+import app.allinonereminder.model.doseLabel
+import app.allinonereminder.data.repository.calculateDayBucket
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import app.allinonereminder.data.repository.DayAdherence
@@ -48,11 +52,30 @@ fun HistoryScreen(
     onBack: () -> Unit
 ) {
     val state by viewModel.uiState.collectAsState()
+    HistoryContent(
+        state = state,
+        onBack = onBack,
+        onSelectProfile = viewModel::selectProfile,
+        onPrevMonth = viewModel::previousMonth,
+        onNextMonth = viewModel::nextMonth,
+        onSelectDate = viewModel::selectDate
+    )
+}
 
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun HistoryContent(
+    state: HistoryUiState,
+    onBack: () -> Unit = {},
+    onSelectProfile: (String?) -> Unit = {},
+    onPrevMonth: () -> Unit = {},
+    onNextMonth: () -> Unit = {},
+    onSelectDate: (LocalDate) -> Unit = {}
+) {
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Adherence History", fontWeight = FontWeight.Bold) },
+                title = { Text("History", style = MaterialTheme.typography.headlineSmall) },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
@@ -84,16 +107,16 @@ fun HistoryScreen(
                     item {
                         LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             item {
-                                FilterChip(
+                                ChoiceChip(
                                     selected = state.selectedProfileId == null,
-                                    onClick = { viewModel.selectProfile(null) },
-                                    label = { Text("All Profiles") }
+                                    onClick = { onSelectProfile(null) },
+                                    label = { Text("Everyone") }
                                 )
                             }
                             items(state.profiles) { profile ->
-                                FilterChip(
+                                ChoiceChip(
                                     selected = state.selectedProfileId == profile.id,
-                                    onClick = { viewModel.selectProfile(profile.id) },
+                                    onClick = { onSelectProfile(profile.id) },
                                     label = { Text(profile.name) },
                                     leadingIcon = {
                                         Box(
@@ -109,15 +132,17 @@ fun HistoryScreen(
                     }
                 }
 
+                item { MonthSummary(state.monthAdherence.values.toList()) }
+
                 // Month Calendar Card
                 item {
                     MonthCalendarCard(
                         yearMonth = state.yearMonth,
                         selectedDate = state.selectedDate,
                         monthAdherence = state.monthAdherence,
-                        onPrevMonth = viewModel::previousMonth,
-                        onNextMonth = viewModel::nextMonth,
-                        onSelectDate = viewModel::selectDate
+                        onPrevMonth = onPrevMonth,
+                        onNextMonth = onNextMonth,
+                        onSelectDate = onSelectDate
                     )
                 }
 
@@ -156,9 +181,12 @@ fun HistoryScreen(
                 // Selected Day Occurrences List
                 if (state.selectedDateOccurrences.isEmpty()) {
                     item {
-                        Card(modifier = Modifier.fillMaxWidth()) {
+                        Card(
+                            modifier = Modifier.fillMaxWidth(),
+                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)
+                        ) {
                             Text(
-                                text = "No doses recorded for ${state.selectedDate}",
+                                text = "Nothing recorded on this day.",
                                 modifier = Modifier.padding(16.dp),
                                 style = MaterialTheme.typography.bodyMedium,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
@@ -184,7 +212,12 @@ fun MonthCalendarCard(
     onNextMonth: () -> Unit,
     onSelectDate: (LocalDate) -> Unit
 ) {
-    Card(modifier = Modifier.fillMaxWidth()) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLowest),
+        border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
+    ) {
         Column(modifier = Modifier.padding(16.dp)) {
             // Header with month title and arrows
             Row(
@@ -299,19 +332,19 @@ private fun bucketColor(bucket: DayAdherenceBucket): Color {
 
 @Composable
 fun AdherenceLegend() {
-    Card(modifier = Modifier.fillMaxWidth()) {
+    Box(modifier = Modifier.fillMaxWidth()) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(12.dp),
+                .padding(horizontal = 4.dp, vertical = 4.dp),
             horizontalArrangement = Arrangement.SpaceAround,
             verticalAlignment = Alignment.CenterVertically
         ) {
             LegendItem(color = Color(0xFF43A047), label = "100%")
-            LegendItem(color = Color(0xFF66BB6A), label = "75%+")
+            LegendItem(color = Color(0xFF66BB6A), label = "80%+")
             LegendItem(color = Color(0xFFFFA726), label = "Partial")
             LegendItem(color = Color(0xFFE53935), label = "Missed")
-            LegendItem(color = Color(0xFFE0E0E0), label = "None", textColor = Color.Gray)
+            LegendItem(color = MaterialTheme.colorScheme.outlineVariant, label = "None", textColor = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
 }
@@ -338,9 +371,9 @@ fun LegendItem(color: Color, label: String, textColor: Color? = null) {
 fun HistoryOccurrenceCard(occ: Occurrence, item: Item) {
     Card(
         modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
-        )
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLowest),
+        border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
     ) {
         Row(
             modifier = Modifier
@@ -349,6 +382,8 @@ fun HistoryOccurrenceCard(occ: Occurrence, item: Item) {
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
+            TypeBadge(item.type, size = 40.dp)
+            Spacer(modifier = Modifier.width(12.dp))
             Column(modifier = Modifier.weight(1f)) {
                 Text(
                     text = item.name,
@@ -356,13 +391,13 @@ fun HistoryOccurrenceCard(occ: Occurrence, item: Item) {
                     fontWeight = FontWeight.Bold
                 )
                 Text(
-                    text = "${item.dosageAmount} ${item.dosageUnit} • ${item.instructions.orEmpty()}",
+                    text = doseLabel(null, item),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
 
                 val zone = ZoneId.systemDefault()
-                val dueFormatter = DateTimeFormatter.ofPattern("hh:mm a")
+                val dueFormatter = DateTimeFormatter.ofPattern("h:mm a")
                 val dueTime = Instant.ofEpochMilli(occ.dueAt).atZone(zone).format(dueFormatter)
 
                 Spacer(modifier = Modifier.height(4.dp))
@@ -370,13 +405,13 @@ fun HistoryOccurrenceCard(occ: Occurrence, item: Item) {
                 if (actedAt != null) {
                     val actedTime = Instant.ofEpochMilli(actedAt).atZone(zone).format(dueFormatter)
                     Text(
-                        text = "Scheduled $dueTime • Logged at $actedTime",
+                        text = "Due $dueTime · Done $actedTime",
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.primary
                     )
                 } else {
                     Text(
-                        text = "Scheduled $dueTime",
+                        text = "Due $dueTime",
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -415,3 +450,74 @@ fun HistoryOccurrenceCard(occ: Occurrence, item: Item) {
     }
 }
 
+
+@Composable
+private fun MonthSummary(days: List<DayAdherence>) {
+    val counted = days.filter { it.totalDue > 0 }
+    val due = counted.sumOf { it.totalDue }
+    val onTime = counted.sumOf { it.onTime }
+    val percent = if (due == 0) null else (onTime * 100) / due
+    val perfectDays = counted.count { it.bucket == DayAdherenceBucket.PERFECT }
+    val missed = counted.sumOf { it.missed }
+    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+        SummaryTile(value = percent?.let { "$it%" } ?: "-", label = "on time", accent = Color(0xFF00897B), modifier = Modifier.weight(1f))
+        SummaryTile(value = "$perfectDays", label = "perfect days", accent = Color(0xFFF4511E), modifier = Modifier.weight(1f))
+        SummaryTile(value = "$missed", label = "missed", accent = Color(0xFFE53935), modifier = Modifier.weight(1f))
+    }
+}
+
+@Composable
+private fun SummaryTile(value: String, label: String, accent: Color, modifier: Modifier = Modifier) {
+    Column(
+        modifier = modifier
+            .clip(MaterialTheme.shapes.medium)
+            .background(accent.copy(alpha = 0.10f))
+            .padding(vertical = 14.dp),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Text(value, style = MaterialTheme.typography.headlineSmall, color = accent)
+        Text(label, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    }
+}
+
+@Composable
+fun HistoryScreenPreview() {
+    val month = YearMonth.now()
+    val today = LocalDate.now()
+    val adherence = (1..month.lengthOfMonth()).associate { d ->
+        val date = month.atDay(d)
+        val due = if (date.isAfter(today)) 0 else 4
+        val onTime = when {
+            due == 0 -> 0
+            d % 7 == 0 -> 1
+            d % 5 == 0 -> 3
+            else -> 4
+        }
+        date to DayAdherence(
+            date = date, totalDue = due, onTime = onTime, taken = onTime, skipped = 0,
+            missed = due - onTime, bucket = calculateDayBucket(due, onTime)
+        )
+    }
+    val sampleItem = Item(
+        id = "i1", profileId = "p1", type = app.allinonereminder.model.ItemType.MEDICINE, name = "Metformin",
+        dosageAmount = "500", dosageUnit = "mg", form = "Tablet", homeZoneId = "UTC", startDate = "2026-01-01",
+        createdAt = 0L, updatedAt = 0L
+    )
+    val now = System.currentTimeMillis()
+    AllInOneReminderTheme {
+        HistoryContent(
+            state = HistoryUiState(
+                yearMonth = month,
+                selectedDate = today,
+                monthAdherence = adherence,
+                selectedDateOccurrences = listOf(
+                    Occurrence(
+                        id = "o1", itemId = "i1", scheduleId = "s1", profileId = "p1", plannedAt = now,
+                        dueAt = now, status = OccurrenceStatus.TAKEN, actedAt = now, deviceId = "d", updatedAt = now
+                    ) to sampleItem
+                ),
+                isLoading = false
+            )
+        )
+    }
+}

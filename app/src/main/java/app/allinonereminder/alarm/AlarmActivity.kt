@@ -531,18 +531,31 @@ fun AlarmScreenContent(
                 .fillMaxSize()
                 .padding(padding)
         ) {
-            // Profile Header Banner
-            Box(
+            // Header: the time, big, and who it is for, on the profile colour
+            val headerText = app.allinonereminder.ui.components.readableTextColor(profileColor)
+            val dueAt = state.items.minOfOrNull { it.occurrence.dueAt }
+            Column(
                 modifier = Modifier
                     .fillMaxWidth()
                     .background(profileColor)
-                    .padding(vertical = 16.dp, horizontal = 24.dp)
+                    .padding(top = 28.dp, bottom = 24.dp, start = 24.dp, end = 24.dp)
             ) {
                 Text(
-                    text = firstProfile?.name ?: "All-in-One Reminder",
-                    color = app.allinonereminder.ui.components.readableTextColor(profileColor),
-                    fontSize = 24.sp,
-                    fontWeight = FontWeight.Bold
+                    text = if (dueAt != null) {
+                        java.time.Instant.ofEpochMilli(dueAt).atZone(java.time.ZoneId.systemDefault())
+                            .format(java.time.format.DateTimeFormatter.ofPattern("h:mm a"))
+                    } else "",
+                    color = headerText,
+                    style = MaterialTheme.typography.displaySmall
+                )
+                Text(
+                    text = when {
+                        firstProfile == null -> "Time for your reminder"
+                        state.items.size > 1 -> "Time for ${firstProfile.name}'s reminders"
+                        else -> "Time for ${firstProfile.name}'s reminder"
+                    },
+                    color = headerText.copy(alpha = 0.9f),
+                    style = MaterialTheme.typography.titleMedium
                 )
             }
 
@@ -596,6 +609,7 @@ fun AlarmScreenContent(
             ) {
                 items(state.items, key = { it.occurrence.id }) { uiModel ->
                     AlarmItemCard(
+                        compact = state.items.size > 1,
                         uiModel = uiModel,
                         onTaken = { onTaken(uiModel.occurrence.id) },
                         onSnooze = { onSnooze(uiModel.occurrence.id) },
@@ -613,6 +627,7 @@ fun AlarmScreenContent(
 
 @Composable
 fun AlarmItemCard(
+    compact: Boolean = false,
     uiModel: AlarmItemUiModel,
     onTaken: () -> Unit,
     onSnooze: () -> Unit,
@@ -623,6 +638,18 @@ fun AlarmItemCard(
     var showMealDeferralMenu by remember { mutableStateOf(false) }
 
     val isAppointment = uiModel.item.type == ItemType.APPOINTMENT
+
+    // Meal-linked reminders keep the full card so "Starting my meal now" / "I haven't eaten yet" stay available.
+    if (compact && uiModel.schedule?.meal == null) {
+        CompactAlarmRow(
+            uiModel = uiModel,
+            isAppointment = isAppointment,
+            onTaken = onTaken,
+            onSnooze = onSnooze,
+            onSkip = onSkip
+        )
+        return
+    }
 
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -640,7 +667,7 @@ fun AlarmItemCard(
             val doseDesc = if (isAppointment) {
                 effectiveDoseAmount(uiModel.schedule, uiModel.item)
             } else {
-                "${effectiveDoseAmount(uiModel.schedule, uiModel.item)} ${uiModel.item.dosageUnit} ${uiModel.item.form ?: ""}".trim()
+                app.allinonereminder.model.doseLabel(uiModel.schedule, uiModel.item)
             }
             Text(
                 text = doseDesc,
@@ -867,4 +894,63 @@ fun SkipReasonDialog(
             }
         }
     )
+}
+
+/** One reminder in a group: name and dose with a Taken button, Snooze and Skip underneath. */
+@Composable
+private fun CompactAlarmRow(
+    uiModel: AlarmItemUiModel,
+    isAppointment: Boolean,
+    onTaken: () -> Unit,
+    onSnooze: () -> Unit,
+    onSkip: () -> Unit
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLowest),
+        border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
+    ) {
+        Column(modifier = Modifier.padding(start = 16.dp, end = 12.dp, top = 14.dp, bottom = 6.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                app.allinonereminder.ui.components.TypeBadge(uiModel.item.type, size = 44.dp)
+                Spacer(modifier = Modifier.width(12.dp))
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(uiModel.item.name, style = MaterialTheme.typography.titleLarge, maxLines = 2)
+                    val dose = if (isAppointment) {
+                        effectiveDoseAmount(uiModel.schedule, uiModel.item)
+                    } else {
+                        app.allinonereminder.model.doseLabel(uiModel.schedule, uiModel.item)
+                    }
+                    if (dose.isNotBlank()) {
+                        Text(dose, style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                }
+                Spacer(modifier = Modifier.width(8.dp))
+                Button(
+                    onClick = onTaken,
+                    modifier = Modifier.defaultMinSize(minHeight = 48.dp),
+                    contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp)
+                ) {
+                    Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text(if (isAppointment) "Got it" else "Taken", maxLines = 1, softWrap = false)
+                }
+            }
+            Row(modifier = Modifier.padding(start = 48.dp)) {
+                TextButton(onClick = onSnooze) {
+                    Icon(Icons.Default.Schedule, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text("Snooze")
+                }
+                if (!isAppointment) {
+                    TextButton(onClick = onSkip) {
+                        Icon(Icons.Default.Close, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text("Skip")
+                    }
+                }
+            }
+        }
+    }
 }

@@ -194,8 +194,16 @@ dependencies {
     testImplementation(libs.junit)
     testImplementation(libs.truth)
     testImplementation(libs.robolectric)
+    testImplementation(platform(libs.androidx.compose.bom))
+    testImplementation(libs.androidx.compose.ui.test.junit4)
     testImplementation(libs.androidx.test.core)
     testImplementation(libs.androidx.test.junit)
     testImplementation(libs.kotlinx.coroutines.test)
 }
 
+
+// Screenshot tests only run with -Pscreenshots=true (see .github/workflows/screenshots.yml).
+tasks.withType<Test>().configureEach {
+    systemProperty("screenshots", (project.findProperty("screenshots") ?: "false").toString())
+    systemProperty("screenshots.dir", layout.buildDirectory.dir("screenshots").get().asFile.absolutePath)
+}

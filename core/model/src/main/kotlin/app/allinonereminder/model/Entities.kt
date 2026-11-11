@@ -175,3 +175,20 @@ data class AppointmentAttachment(
     val mimeType: String,
     val createdAt: Long
 )
+
+/** Units that already say what the thing is, so the form is not repeated ("1 capsule", not "1 capsule Tablet"). */
+private val FORM_LIKE_UNITS = setOf(
+    "tablet", "capsule", "softgel", "gummy", "patch", "sachet", "drops", "puffs", "glass", "cup", "bottle",
+    "serving", "piece", "bowl", "plate", "slice", "scoop", "teaspoon"
+)
+
+/** "500 mg Tablet", "1 capsule", "1 glass Water": amount, unit and (when it adds something) form. */
+fun doseLabel(schedule: Schedule?, item: Item): String {
+    val unit = item.dosageUnit.trim()
+    val form = item.form?.trim()?.takeUnless {
+        it.isEmpty() || it.equals(unit, ignoreCase = true) || unit.lowercase() in FORM_LIKE_UNITS
+    }
+    return listOf(effectiveDoseAmount(schedule, item), unit, form)
+        .filter { !it.isNullOrBlank() }
+        .joinToString(" ")
+}
