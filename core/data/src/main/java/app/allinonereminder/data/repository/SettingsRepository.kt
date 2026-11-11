@@ -61,6 +61,9 @@ class SettingsRepository(
         val KEY_SIMPLE_PROFILE = stringPreferencesKey("simple_mode_profile")
         val KEY_SIMPLE_PIN = stringPreferencesKey("simple_mode_pin_hash")
         val KEY_POINTS_HIDDEN = stringPreferencesKey("points_hidden_profiles")
+        val KEY_TODAY_LAYOUT = stringPreferencesKey("today_layout")
+        private fun quietKey(profileId: String) = stringPreferencesKey("quiet_hours_$profileId")
+        private fun speechKey(profileId: String) = stringPreferencesKey("speech_lang_$profileId")
         val KEY_NEXT_ALARM_AT = androidx.datastore.preferences.core.longPreferencesKey("next_alarm_at")
 
         /** Stored sound value meaning "use the phone's default sound". Older installs stored names like "alarm". */
@@ -133,6 +136,48 @@ class SettingsRepository(
             if (hidden) current += profileId else current -= profileId
             prefs[KEY_POINTS_HIDDEN] = current.joinToString(",")
         }
+    }
+
+    /**
+     * Quiet hours per person (#88) as (startMinute, endMinute) of the day; may cross midnight.
+     * During them, reminders that are not "must not miss" ring as a soft notification only.
+     */
+    val quietHoursFlow: Flow<Map<String, Pair<Int, Int>>> = dataStore.data.map { prefs ->
+        prefs.asMap().mapNotNull { (key, value) ->
+            val name = key.name
+            if (!name.startsWith("quiet_hours_")) return@mapNotNull null
+            val parts = (value as? String)?.split('-')?.mapNotNull { it.toIntOrNull() } ?: return@mapNotNull null
+            if (parts.size != 2) return@mapNotNull null
+            name.removePrefix("quiet_hours_") to (parts[0] to parts[1])
+        }.toMap()
+    }
+
+    suspend fun setQuietHours(profileId: String, startMinute: Int?, endMinute: Int?) {
+        dataStore.edit { prefs ->
+            if (startMinute == null || endMinute == null || startMinute == endMinute) prefs.remove(quietKey(profileId))
+            else prefs[quietKey(profileId)] = "${startMinute.coerceIn(0, 1439)}-${endMinute.coerceIn(0, 1439)}"
+        }
+    }
+
+    /** Spoken-reminder language per person (#89): "en" or "hi". Missing means the phone language. */
+    val speechLanguageFlow: Flow<Map<String, String>> = dataStore.data.map { prefs ->
+        prefs.asMap().mapNotNull { (key, value) ->
+            if (!key.name.startsWith("speech_lang_")) return@mapNotNull null
+            key.name.removePrefix("speech_lang_") to (value as? String ?: return@mapNotNull null)
+        }.toMap()
+    }
+
+    suspend fun setSpeechLanguage(profileId: String, language: String?) {
+        dataStore.edit { prefs ->
+            if (language.isNullOrBlank()) prefs.remove(speechKey(profileId)) else prefs[speechKey(profileId)] = language
+        }
+    }
+
+    /** Today list grouping (#90): "time" (morning, afternoon, ...) or "person". */
+    val todayLayoutFlow: Flow<String> = dataStore.data.map { it[KEY_TODAY_LAYOUT] ?: "time" }
+
+    suspend fun setTodayLayout(layout: String) {
+        dataStore.edit { it[KEY_TODAY_LAYOUT] = if (layout == "person") "person" else "time" }
     }
 
     /** Name of whoever usually marks doses on this shared phone; saved with each Taken/Skip (#80). */

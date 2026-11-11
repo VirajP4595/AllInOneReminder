@@ -61,6 +61,9 @@ class TodayGlanceWidget : GlanceAppWidget() {
         var nextItemName: String? = null
         var nextItemTime: String? = null
         var nextItemDose: String? = null
+        var nextOccurrenceId: String? = null
+        var canTakeFromWidget = false
+        var nextIsLate = false
 
         var medsPercent = 100
         var hydrationPercent = 100
@@ -72,7 +75,9 @@ class TodayGlanceWidget : GlanceAppWidget() {
                 WidgetEntryPoint::class.java
             )
 
-            val upcoming = entryPoint.occurrenceDao().getOccurrencesBetweenSync(now, endOfDay)
+            // From the start of today, so an overdue dose stays on the widget until it is dealt with.
+            val startOfDay = today.atStartOfDay(zone).toInstant().toEpochMilli()
+            val upcoming = entryPoint.occurrenceDao().getOccurrencesBetweenSync(startOfDay, endOfDay)
                 .filter {
                     it.status == OccurrenceStatus.PENDING ||
                     it.status == OccurrenceStatus.RINGING ||
@@ -89,6 +94,14 @@ class TodayGlanceWidget : GlanceAppWidget() {
                     val timeFormatter = app.allinonereminder.ui.components.AppTime.formatter()
                     nextItemTime = Instant.ofEpochMilli(upcoming.dueAt).atZone(zone).format(timeFormatter)
                     nextItemDose = "${item.dosageAmount} ${item.dosageUnit}"
+                    nextOccurrenceId = upcoming.id
+                    nextIsLate = upcoming.dueAt < now
+                    // Offer Taken only for doses due within the next hour or overdue, and never
+                    // inside the double-dose gap (the app shows the warning instead).
+                    val lastTaken = entryPoint.occurrenceDao().getLastTakenBeforeSync(item.id, now)?.actedAt
+                    val gap = item.minGapMinutes ?: 0
+                    val tooSoon = gap > 0 && lastTaken != null && (now - lastTaken) < gap * 60_000L
+                    canTakeFromWidget = !tooSoon && upcoming.dueAt <= now + 60 * 60_000L
                 }
             }
 
@@ -145,12 +158,23 @@ class TodayGlanceWidget : GlanceAppWidget() {
                                 maxLines = 1
                             )
                             Text(
-                                text = "at $nextItemTime (${nextItemDose.orEmpty()})",
+                                text = (if (nextIsLate) "was due $nextItemTime" else "at $nextItemTime") +
+                                    " (${nextItemDose.orEmpty()})",
                                 style = TextStyle(
                                     fontSize = 13.sp,
-                                    color = GlanceTheme.colors.onSurfaceVariant
+                                    color = if (nextIsLate) GlanceTheme.colors.error else GlanceTheme.colors.onSurfaceVariant
                                 )
                             )
+                            val occId = nextOccurrenceId
+                            if (canTakeFromWidget && occId != null) {
+                                Spacer(modifier = GlanceModifier.height(6.dp))
+                                androidx.glance.Button(
+                                    text = "Taken",
+                                    onClick = androidx.glance.appwidget.action.actionRunCallback<WidgetTakeAction>(
+                                        androidx.glance.action.actionParametersOf(WidgetTakeAction.OCCURRENCE_ID to occId)
+                                    )
+                                )
+                            }
                         } else {
                             Text(
                                 text = "All caught up for today! 🎉",

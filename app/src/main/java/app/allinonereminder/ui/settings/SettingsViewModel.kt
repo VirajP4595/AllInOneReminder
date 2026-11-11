@@ -22,6 +22,11 @@ data class SettingsUiState(
     val themeMode: String = "system",
     val weekendDays: Set<Int> = setOf(6, 7),
     val caregiverName: String = "",
+    val profiles: List<app.allinonereminder.model.Profile> = emptyList(),
+    val pointsHidden: Set<String> = emptySet(),
+    val quietHours: Map<String, Pair<Int, Int>> = emptyMap(),
+    val speechLanguages: Map<String, String> = emptyMap(),
+    val todayLayout: String = "time",
     val defaultSnoozeMinutes: Int = 10,
     val ringDurationSeconds: Int = 120,
     val vibrationEnabled: Boolean = true,
@@ -47,7 +52,8 @@ class SettingsViewModel @Inject constructor(
     private val backupManager: BackupManager,
     private val activitySource: ActivitySource,
     private val alarmCoordinator: app.allinonereminder.alarm.AlarmCoordinator,
-    private val csvExporter: app.allinonereminder.backup.CsvExporter
+    private val csvExporter: app.allinonereminder.backup.CsvExporter,
+    private val profileRepository: app.allinonereminder.data.repository.ProfileRepository
 ) : ViewModel() {
 
     private val _isProcessing = MutableStateFlow(false)
@@ -87,6 +93,16 @@ class SettingsViewModel @Inject constructor(
         state.copy(weekendDays = days)
     }.combine(settingsRepository.caregiverNameFlow) { state, name ->
         state.copy(caregiverName = name ?: "")
+    }.combine(profileRepository.getActiveProfiles()) { state, profiles ->
+        state.copy(profiles = profiles)
+    }.combine(settingsRepository.pointsHiddenFlow) { state, hidden ->
+        state.copy(pointsHidden = hidden)
+    }.combine(settingsRepository.quietHoursFlow) { state, quiet ->
+        state.copy(quietHours = quiet)
+    }.combine(settingsRepository.speechLanguageFlow) { state, langs ->
+        state.copy(speechLanguages = langs)
+    }.combine(settingsRepository.todayLayoutFlow) { state, layout ->
+        state.copy(todayLayout = layout)
     }.combine(_autoBackup) { state, auto ->
         state.copy(autoBackup = auto)
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), SettingsUiState())
@@ -144,6 +160,27 @@ class SettingsViewModel @Inject constructor(
                 alarmCoordinator.reschedule("weekend_days_changed")
             }
         }
+    }
+
+    fun setQuietHours(profileId: String, start: Int?, end: Int?) {
+        viewModelScope.launch { settingsRepository.setQuietHours(profileId, start, end) }
+    }
+
+    fun setSpeechLanguage(profileId: String, language: String?) {
+        viewModelScope.launch { settingsRepository.setSpeechLanguage(profileId, language) }
+    }
+
+    fun setTodayLayout(layout: String) {
+        viewModelScope.launch { settingsRepository.setTodayLayout(layout) }
+    }
+
+    fun setPointsHidden(profileId: String, hidden: Boolean) {
+        viewModelScope.launch { settingsRepository.setPointsHidden(profileId, hidden) }
+    }
+
+    /** Locks the app to [profileId]'s simple screen; leaving needs [pin] (#79). */
+    fun enableSimpleMode(profileId: String, pin: String) {
+        viewModelScope.launch { settingsRepository.enableSimpleMode(profileId, pin) }
     }
 
     fun setCaregiverName(name: String) {

@@ -16,6 +16,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.CustomAccessibilityAction
+import androidx.compose.ui.semantics.customActions
 import androidx.compose.ui.semantics.progressBarRangeInfo
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.graphics.Color
@@ -123,7 +125,11 @@ fun TodayScreen(
                 value = System.currentTimeMillis()
             }
         }
-        val pendingGroups = groupPendingByTimeOfDay(upNext, nowMillis)
+        val pendingGroups = if (uiState.groupByPerson && uiState.selectedProfileId == null) {
+            groupPendingByPerson(upNext, nowMillis)
+        } else {
+            groupPendingByTimeOfDay(upNext, nowMillis)
+        }
         val finished = visible.filter { it.occurrence.status !in open }
         val doneCount = visible.count { it.occurrence.status == OccurrenceStatus.TAKEN }
 
@@ -774,6 +780,19 @@ internal fun groupPendingByTimeOfDay(pending: List<OccurrenceUiModel>, nowMillis
     return groups
 }
 
+/** "Group Today by person" (#90): overdue first, then one block per person, each by time. */
+internal fun groupPendingByPerson(pending: List<OccurrenceUiModel>, nowMillis: Long): List<PendingGroup> {
+    val (overdue, later) = pending.partition {
+        it.occurrence.status != OccurrenceStatus.RINGING && it.occurrence.dueAt < nowMillis
+    }
+    val groups = mutableListOf<PendingGroup>()
+    if (overdue.isNotEmpty()) groups += PendingGroup("Overdue", true, overdue)
+    later.groupBy { it.profile?.name ?: "Others" }.toSortedMap().forEach { (name, list) ->
+        groups += PendingGroup(name, false, list.sortedBy { it.occurrence.dueAt })
+    }
+    return groups
+}
+
 @Composable
 private fun PendingGroupLabel(label: String, overdue: Boolean, count: Int) {
     val color = if (overdue) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant
@@ -790,7 +809,8 @@ private fun PendingGroupLabel(label: String, overdue: Boolean, count: Int) {
                 "Morning" -> Icons.Default.WbSunny
                 "Afternoon" -> Icons.Default.LightMode
                 "Evening" -> Icons.Default.WbTwilight
-                else -> Icons.Default.Bedtime
+                "Night" -> Icons.Default.Bedtime
+                else -> Icons.Default.Person
             },
             contentDescription = null,
             tint = color,
@@ -889,10 +909,25 @@ private fun OccurrenceTimelineCard(
     val dueTime = Instant.ofEpochMilli(occ.dueAt).atZone(ZoneId.systemDefault())
     val formattedTime = dueTime.format(app.allinonereminder.ui.components.AppTime.formatter())
 
+    // TalkBack: the card's buttons are also offered as actions on the card itself (#82).
+    val isOpen = occ.status in listOf(OccurrenceStatus.PENDING, OccurrenceStatus.RINGING, OccurrenceStatus.SNOOZED, OccurrenceStatus.DEFERRED_MEAL)
     Card(
         modifier = Modifier
             .fillMaxWidth()
-            .clickable(onClick = onClick),
+            .clickable(onClick = onClick)
+            .semantics {
+                customActions = if (isOpen) {
+                    listOf(
+                        CustomAccessibilityAction("Mark ${item.name} taken") { onTake(); true },
+                        CustomAccessibilityAction("Snooze ${item.name}") { onSnooze(); true },
+                        CustomAccessibilityAction("Skip ${item.name}") { onSkip(); true }
+                    )
+                } else if (occ.status == OccurrenceStatus.MISSED) {
+                    listOf(CustomAccessibilityAction("Mark ${item.name} taken after all") { onTakenAfterAll(); true })
+                } else {
+                    listOf(CustomAccessibilityAction("Undo ${item.name}") { onReopen(); true })
+                }
+            },
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLowest),
         border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
         elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)

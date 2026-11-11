@@ -610,7 +610,7 @@ fun AlarmScreenContent(
                         onClick = onAllTaken,
                         modifier = Modifier
                             .weight(1.3f)
-                            .defaultMinSize(minHeight = 52.dp),
+                            .defaultMinSize(minHeight = 72.dp),
                         contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp)
                     ) {
                         Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(20.dp))
@@ -621,7 +621,7 @@ fun AlarmScreenContent(
                         onClick = onSnoozeAll,
                         modifier = Modifier
                             .weight(1f)
-                            .defaultMinSize(minHeight = 52.dp),
+                            .defaultMinSize(minHeight = 72.dp),
                         contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp)
                     ) {
                         Icon(Icons.Default.Schedule, contentDescription = null, modifier = Modifier.size(20.dp))
@@ -741,7 +741,7 @@ fun AlarmItemCard(
                 onClick = onTaken,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .defaultMinSize(minHeight = 56.dp)
+                    .defaultMinSize(minHeight = 72.dp)
             ) {
                 Icon(Icons.Default.Check, contentDescription = null)
                 Spacer(modifier = Modifier.width(8.dp))
@@ -756,7 +756,7 @@ fun AlarmItemCard(
                     onClick = onSnooze,
                     modifier = Modifier
                         .weight(1f)
-                        .defaultMinSize(minHeight = 48.dp),
+                        .defaultMinSize(minHeight = 64.dp),
                     contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp)
                 ) {
                     Icon(Icons.Default.Schedule, contentDescription = null, modifier = Modifier.size(20.dp))
@@ -769,7 +769,7 @@ fun AlarmItemCard(
                         onClick = onSkip,
                         modifier = Modifier
                             .weight(1f)
-                            .defaultMinSize(minHeight = 48.dp),
+                            .defaultMinSize(minHeight = 64.dp),
                         contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp)
                     ) {
                         Icon(Icons.Default.Close, contentDescription = null, modifier = Modifier.size(20.dp))

@@ -94,6 +94,35 @@ fun MainAppNavigation(
     }.collectAsState(initial = true)
     val startDestination = if (onboardingCompleted) Screen.Today.route else Screen.Onboarding.route
 
+    // Simple mode (#79): the whole app becomes one large screen for one person until a PIN is entered.
+    val simpleProfileId by remember(settingsRepository) { settingsRepository.simpleModeProfileFlow }
+        .collectAsState(initial = null)
+    simpleProfileId?.let { profileId ->
+        val viewModel: TodayViewModel = hiltViewModel()
+        val uiState by viewModel.uiState.collectAsState()
+        LaunchedEffect(profileId) { viewModel.selectProfile(profileId) }
+        var exitError by remember { mutableStateOf(false) }
+        app.allinonereminder.ui.today.SimpleModeScreen(
+            uiState = uiState,
+            onTake = { viewModel.onTakeClicked(it, force = false) },
+            onExit = { pin ->
+                coroutineScope.launch { exitError = !settingsRepository.disableSimpleMode(pin) }
+            },
+            exitError = exitError
+        )
+        // Same double-dose guard as Today.
+        uiState.doubleDoseWarningOccurrence?.let { warn ->
+            AlertDialog(
+                onDismissRequest = viewModel::dismissDoubleDoseWarning,
+                title = { Text("Already taken recently") },
+                text = { Text("${warn.item.name} was taken a short while ago. Take it again?") },
+                confirmButton = { TextButton(onClick = { viewModel.onTakeClicked(warn, force = true) }) { Text("Yes, take it") } },
+                dismissButton = { TextButton(onClick = viewModel::dismissDoubleDoseWarning) { Text("No") } }
+            )
+        }
+        return
+    }
+
     val showBottomBar = currentRoute in BOTTOM_BAR_SCREENS.map { it.route }
 
     // Launcher shortcuts (#84)
@@ -448,6 +477,11 @@ fun MainAppNavigation(
                     onSetThemeMode = viewModel::setThemeMode,
                     onToggleWeekendDay = viewModel::toggleWeekendDay,
                     onSetCaregiverName = viewModel::setCaregiverName,
+                    onSetPointsHidden = viewModel::setPointsHidden,
+                    onSetQuietHours = viewModel::setQuietHours,
+                    onSetSpeechLanguage = viewModel::setSpeechLanguage,
+                    onSetTodayLayout = viewModel::setTodayLayout,
+                    onEnableSimpleMode = viewModel::enableSimpleMode,
                     onUpdateSnooze = viewModel::updateSnoozeMinutes,
                     onUpdateRingDuration = viewModel::updateRingDurationSeconds,
                     onUpdateSpeakReminders = viewModel::updateSpeakReminders,

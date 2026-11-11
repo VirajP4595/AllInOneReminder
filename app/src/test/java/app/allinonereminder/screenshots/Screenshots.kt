@@ -39,7 +39,7 @@ import java.io.File
  */
 @RunWith(AndroidJUnit4::class)
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
-abstract class ScreenshotBase(private val suffix: String) {
+abstract class ScreenshotBase(private val suffix: String, private val fontScale: Float = 1f) {
 
     @get:Rule
     val compose = createAndroidComposeRule<ComponentActivity>()
@@ -50,7 +50,13 @@ abstract class ScreenshotBase(private val suffix: String) {
     }
 
     private fun shot(name: String, content: @Composable () -> Unit) {
-        compose.setContent { content() }
+        compose.setContent {
+            // Large-text runs (#82) scale fonts the way Android's font-size setting does.
+            val density = androidx.compose.ui.platform.LocalDensity.current
+            androidx.compose.runtime.CompositionLocalProvider(
+                androidx.compose.ui.platform.LocalDensity provides androidx.compose.ui.unit.Density(density.density, fontScale)
+            ) { content() }
+        }
         compose.waitForIdle()
         // Draw the window directly; PixelCopy (captureToImage) does not complete under Robolectric.
         val view = compose.activity.window.decorView
@@ -78,6 +84,10 @@ class LightScreenshots : ScreenshotBase("")
 
 @Config(sdk = [34], qualifiers = "w393dp-h852dp-night-xhdpi")
 class DarkScreenshots : ScreenshotBase("_dark")
+
+/** Text at 200% (Android 14's largest setting) to catch clipped or overlapping layouts (#82). */
+@Config(sdk = [34], qualifiers = "w393dp-h852dp-xhdpi")
+class LargeTextScreenshots : ScreenshotBase("_text200", fontScale = 2f)
 
 @Composable
 private fun SampleAlarm() {

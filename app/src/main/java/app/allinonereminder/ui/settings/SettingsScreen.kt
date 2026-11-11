@@ -50,6 +50,11 @@ fun SettingsScreen(
     onSetThemeMode: (String) -> Unit = {},
     onToggleWeekendDay: (Int) -> Unit = {},
     onSetCaregiverName: (String) -> Unit = {},
+    onSetPointsHidden: (String, Boolean) -> Unit = { _, _ -> },
+    onSetQuietHours: (String, Int?, Int?) -> Unit = { _, _, _ -> },
+    onSetSpeechLanguage: (String, String?) -> Unit = { _, _ -> },
+    onSetTodayLayout: (String) -> Unit = {},
+    onEnableSimpleMode: (String, String) -> Unit = { _, _ -> },
     onUpdateSnooze: (Int) -> Unit = {},
     onUpdateRingDuration: (Int) -> Unit = {},
     onUpdateSpeakReminders: (Boolean) -> Unit = {},
@@ -249,6 +254,131 @@ fun SettingsScreen(
                     selected = uiState.themeMode,
                     onSelect = onSetThemeMode
                 )
+                Spacer(modifier = Modifier.height(12.dp))
+                Text("Group Today's list by", fontWeight = FontWeight.SemiBold)
+                SegmentedChoice(
+                    options = listOf("time" to "Time of day", "person" to "Person"),
+                    selected = uiState.todayLayout,
+                    onSelect = onSetTodayLayout
+                )
+            }
+
+            if (uiState.profiles.isNotEmpty()) {
+                var simpleFor by remember { mutableStateOf<app.allinonereminder.model.Profile?>(null) }
+                SectionCard(title = "Per person", icon = Icons.Default.Accessibility) {
+                    Text(
+                        text = "Simple mode shows one person's doses in large text with one big Taken button. " +
+                            "You set a PIN; it is needed to leave simple mode.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    uiState.profiles.forEach { p ->
+                        Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                            app.allinonereminder.ui.components.ProfileAvatar(p.name, p.colorArgb, p.photoPath, size = 36.dp)
+                            Spacer(modifier = Modifier.width(10.dp))
+                            Text(p.name, modifier = Modifier.weight(1f), style = MaterialTheme.typography.bodyLarge)
+                            TextButton(onClick = { simpleFor = p }) { Text("Simple mode") }
+                        }
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .toggleable(
+                                    value = p.id !in uiState.pointsHidden,
+                                    role = androidx.compose.ui.semantics.Role.Switch,
+                                    onValueChange = { show -> onSetPointsHidden(p.id, !show) }
+                                )
+                                .padding(start = 46.dp, bottom = 6.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text("Show points and levels", modifier = Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
+                            Switch(checked = p.id !in uiState.pointsHidden, onCheckedChange = null)
+                        }
+                        // Quiet hours (#88): soft notification instead of a loud alarm, except "must not miss"
+                        val quiet = uiState.quietHours[p.id]
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .toggleable(
+                                    value = quiet != null,
+                                    role = androidx.compose.ui.semantics.Role.Switch,
+                                    onValueChange = { on -> if (on) onSetQuietHours(p.id, 22 * 60, 7 * 60) else onSetQuietHours(p.id, null, null) }
+                                )
+                                .padding(start = 46.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text("Quiet hours", style = MaterialTheme.typography.bodyMedium)
+                                Text(
+                                    "Only \"must not miss\" items ring loudly",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                            Switch(checked = quiet != null, onCheckedChange = null)
+                        }
+                        if (quiet != null) {
+                            Row(
+                                modifier = Modifier.padding(start = 46.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                TimeChip(minuteOfDay = quiet.first, onChange = { onSetQuietHours(p.id, it, quiet.second) }, contentDescription = "Quiet hours start")
+                                Text("to")
+                                TimeChip(minuteOfDay = quiet.second, onChange = { onSetQuietHours(p.id, quiet.first, it) }, contentDescription = "Quiet hours end")
+                            }
+                        }
+                        // Spoken reminders language (#89)
+                        Column(modifier = Modifier.padding(start = 46.dp, bottom = 10.dp)) {
+                            Text("Spoken reminders", style = MaterialTheme.typography.bodyMedium)
+                            SegmentedChoice(
+                                options = listOf("" to "Phone", "en" to "English", "hi" to "हिन्दी"),
+                                selected = uiState.speechLanguages[p.id] ?: "",
+                                onSelect = { onSetSpeechLanguage(p.id, it.ifEmpty { null }) }
+                            )
+                        }
+                        HorizontalDivider()
+                    }
+                }
+                simpleFor?.let { p ->
+                    var pin by remember { mutableStateOf("") }
+                    var pin2 by remember { mutableStateOf("") }
+                    AlertDialog(
+                        onDismissRequest = { simpleFor = null },
+                        title = { Text("Simple mode for ${p.name}") },
+                        text = {
+                            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                Text("Choose a 4 to 8 digit PIN. You will need it to leave simple mode.", style = MaterialTheme.typography.bodySmall)
+                                AppTextField(
+                                    value = pin,
+                                    onValueChange = { v -> pin = v.filter { it.isDigit() }.take(8) },
+                                    label = { Text("PIN") },
+                                    singleLine = true,
+                                    visualTransformation = PasswordVisualTransformation(),
+                                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword)
+                                )
+                                AppTextField(
+                                    value = pin2,
+                                    onValueChange = { v -> pin2 = v.filter { it.isDigit() }.take(8) },
+                                    label = { Text("Repeat PIN") },
+                                    singleLine = true,
+                                    visualTransformation = PasswordVisualTransformation(),
+                                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
+                                    isError = pin2.isNotEmpty() && pin2 != pin
+                                )
+                            }
+                        },
+                        confirmButton = {
+                            Button(
+                                enabled = pin.length >= 4 && pin == pin2,
+                                onClick = {
+                                    onEnableSimpleMode(p.id, pin)
+                                    simpleFor = null
+                                }
+                            ) { Text("Start simple mode") }
+                        },
+                        dismissButton = { TextButton(onClick = { simpleFor = null }) { Text("Cancel") } }
+                    )
+                }
             }
 
             SectionCard(title = "Week and household", icon = Icons.Default.CalendarMonth) {

@@ -89,6 +89,7 @@ data class TodayUiState(
     val rewardMessage: String? = null,
     val undo: UndoInfo? = null,
     val missedYesterday: List<OccurrenceUiModel> = emptyList(),
+    val groupByPerson: Boolean = false,
     val isLoading: Boolean = true
 )
 
@@ -317,6 +318,15 @@ class TodayViewModel @Inject constructor(
                 },
             isLoading = false
         )
+    }.combine(settingsRepository.pointsHiddenFlow) { state, hidden ->
+        // Per-person "hide points" (#85): no points, level or reward messages for that person.
+        val hide = when (val selected = state.selectedProfileId) {
+            null -> state.profiles.isNotEmpty() && state.profiles.all { it.id in hidden }
+            else -> selected in hidden
+        }
+        if (hide) state.copy(progress = null, rewardMessage = null) else state
+    }.combine(settingsRepository.todayLayoutFlow) { state, layout ->
+        state.copy(groupByPerson = layout == "person")
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), TodayUiState())
 
     init {

@@ -422,6 +422,30 @@ fun ItemEditorScreen(
                         onSelect = onTimePolicyChange
                     )
 
+                    // Reminder window (#88): rings at the start, middle and end of the window, i.e.
+                    // re-ring every half window, missed after the window (3 rings for normal items).
+                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Text("Reminder window", fontWeight = FontWeight.SemiBold)
+                        Text(
+                            "Rings at the start, middle and end of the window",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            listOf(30, 60, 120).forEach { window ->
+                                val selected = uiState.graceMinutes == window && uiState.reRingMinutes == window / 2
+                                ChoiceChip(
+                                    selected = selected,
+                                    onClick = {
+                                        onGraceMinutesChange(window)
+                                        onReRingMinutesChange(window / 2)
+                                    },
+                                    label = { Text(minutesLabel(window)) }
+                                )
+                            }
+                        }
+                    }
+
                     TimingChoice(
                         title = "Ring again every",
                         subtitle = "If nobody answers the alarm",
