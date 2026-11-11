@@ -62,6 +62,8 @@ import app.allinonereminder.data.repository.ItemRepository
 import app.allinonereminder.data.repository.MealSessionRepository
 import app.allinonereminder.data.repository.OccurrenceRepository
 import app.allinonereminder.data.repository.SettingsRepository
+import app.allinonereminder.ui.components.AppTime
+import app.allinonereminder.ui.components.SnoozeChoiceDialog
 import app.allinonereminder.data.repository.ProfileRepository
 import app.allinonereminder.data.repository.ScheduleRepository
 import app.allinonereminder.model.Item
@@ -156,7 +158,7 @@ class AlarmViewModel @Inject constructor(
                     val lastTakenInstant = lastTaken?.actedAt?.let { Instant.ofEpochMilli(it) }
                     val warning = SchedulingEngine.doseWarning(item, lastTakenInstant, now)
                     if (warning != null && lastTakenInstant != null) {
-                        val timeFormatter = app.allinonereminder.ui.components.AppTime.formatter().withZone(ZoneId.systemDefault())
+                        val timeFormatter = AppTime.formatter().withZone(ZoneId.systemDefault())
                         warningOcc = occ
                         warningTimeStr = timeFormatter.format(lastTakenInstant)
                     }
@@ -194,7 +196,7 @@ class AlarmViewModel @Inject constructor(
                 val lastTakenInstant = lastTaken?.actedAt?.let { Instant.ofEpochMilli(it) }
                 val warning = SchedulingEngine.doseWarning(occUi.item, lastTakenInstant, now)
                 if (warning != null && lastTakenInstant != null) {
-                    val timeFormatter = app.allinonereminder.ui.components.AppTime.formatter().withZone(ZoneId.systemDefault())
+                    val timeFormatter = AppTime.formatter().withZone(ZoneId.systemDefault())
                     _uiState.value = _uiState.value.copy(
                         warningOccurrenceId = occurrenceId,
                         warningTimeStr = timeFormatter.format(lastTakenInstant)
@@ -220,7 +222,7 @@ class AlarmViewModel @Inject constructor(
                 val lastTakenInstant = lastTaken?.actedAt?.let { Instant.ofEpochMilli(it) }
                 val warning = SchedulingEngine.doseWarning(uiModel.item, lastTakenInstant, now)
                 if (warning != null && lastTakenInstant != null) {
-                    val timeFormatter = app.allinonereminder.ui.components.AppTime.formatter().withZone(ZoneId.systemDefault())
+                    val timeFormatter = AppTime.formatter().withZone(ZoneId.systemDefault())
                     _uiState.value = _uiState.value.copy(
                         warningOccurrenceId = uiModel.occurrence.id,
                         warningTimeStr = timeFormatter.format(lastTakenInstant)
@@ -407,7 +409,7 @@ class AlarmActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        app.allinonereminder.ui.components.AppTime.refresh(this)
+        AppTime.refresh(this)
 
         // Show over the lock screen and wake the display, like a clock alarm. Do NOT call
         // KeyguardManager.requestDismissKeyguard here: on a phone with a PIN/pattern it puts the
@@ -542,7 +544,7 @@ fun AlarmScreenContent(
                 Text(
                     text = if (dueAt != null) {
                         java.time.Instant.ofEpochMilli(dueAt).atZone(java.time.ZoneId.systemDefault())
-                            .format(java.time.format.app.allinonereminder.ui.components.AppTime.formatter())
+                            .format(AppTime.formatter())
                     } else "",
                     color = headerText,
                     style = MaterialTheme.typography.displaySmall
@@ -828,7 +830,7 @@ fun SnoozeOptionsDialog(
     onDismiss: () -> Unit,
     onSelect: (Int) -> Unit
 ) {
-    app.allinonereminder.ui.components.SnoozeChoiceDialog(onDismiss = onDismiss, onSelect = onSelect)
+    SnoozeChoiceDialog(onDismiss = onDismiss, onSelect = onSelect)
 }
 
 @Composable
