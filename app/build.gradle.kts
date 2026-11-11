@@ -205,6 +205,11 @@ dependencies {
 // Screenshot tests only run with -Pscreenshots=true, and only for the debug variant (they need the
 // test activity from ui-test-manifest, which is a debug-only dependency). See screenshots.yml.
 tasks.withType<Test>().configureEach {
+    // Show the full assertion message in CI logs when a test fails.
+    testLogging {
+        events("failed")
+        exceptionFormat = org.gradle.api.tasks.testing.logging.TestExceptionFormat.FULL
+    }
     val screenshotsOn = (project.findProperty("screenshots") ?: "false").toString() == "true"
     systemProperty("screenshots", screenshotsOn.toString())
     systemProperty("screenshots.dir", layout.buildDirectory.dir("screenshots").get().asFile.absolutePath)
