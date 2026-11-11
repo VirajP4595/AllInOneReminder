@@ -567,25 +567,29 @@ private fun TodayHero(
 
             if (progress != null) {
                 Spacer(modifier = Modifier.height(16.dp))
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    StatPill(
-                        icon = Icons.Default.LocalFireDepartment,
-                        text = if (progress.bestStreakDays == 1) "1 day" else "${progress.bestStreakDays} days",
-                        contentDescription = "Streak: ${progress.bestStreakDays} days",
-                        modifier = Modifier.weight(1f)
-                    )
-                    StatPill(
-                        icon = Icons.Default.Star,
-                        text = "${progress.totalPoints} pts",
-                        contentDescription = "${progress.totalPoints} points",
-                        modifier = Modifier.weight(1f)
-                    )
-                    StatPill(
-                        icon = Icons.Default.EmojiEvents,
-                        text = "Level ${progress.level}",
-                        contentDescription = "Level ${progress.level}",
-                        modifier = Modifier.weight(1f)
-                    )
+                // With very large text the three pills don't fit side by side; stack them (#82).
+                val stack = androidx.compose.ui.platform.LocalDensity.current.fontScale > 1.3f
+                val pills: List<Triple<androidx.compose.ui.graphics.vector.ImageVector, String, String>> = listOf(
+                    Triple(
+                        Icons.Default.LocalFireDepartment,
+                        if (progress.bestStreakDays == 1) "1 day" else "${progress.bestStreakDays} days",
+                        "Streak: ${progress.bestStreakDays} days"
+                    ),
+                    Triple(Icons.Default.Star, "${progress.totalPoints} pts", "${progress.totalPoints} points"),
+                    Triple(Icons.Default.EmojiEvents, "Level ${progress.level}", "Level ${progress.level}")
+                )
+                if (stack) {
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        pills.forEach { (icon, text, cd) ->
+                            StatPill(icon = icon, text = text, contentDescription = cd, modifier = Modifier.fillMaxWidth())
+                        }
+                    }
+                } else {
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        pills.forEach { (icon, text, cd) ->
+                            StatPill(icon = icon, text = text, contentDescription = cd, modifier = Modifier.weight(1f))
+                        }
+                    }
                 }
                 Spacer(modifier = Modifier.height(12.dp))
                 LinearProgressIndicator(
@@ -1049,33 +1053,43 @@ private fun OccurrenceTimelineCard(
             // Quick actions if pending, ringing, snoozed, or deferred
             if (occ.status in listOf(OccurrenceStatus.PENDING, OccurrenceStatus.RINGING, OccurrenceStatus.SNOOZED, OccurrenceStatus.DEFERRED_MEAL)) {
                 Spacer(modifier = Modifier.height(12.dp))
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    Button(
-                        onClick = onTake,
-                        modifier = Modifier
-                            .weight(1.2f)
-                            .defaultMinSize(minHeight = 44.dp)
-                    ) {
-                        Text(if (item.type == ItemType.APPOINTMENT) "Got it" else "Take")
+                val takeLabel = if (item.type == ItemType.APPOINTMENT) "Got it" else "Take"
+                if (androidx.compose.ui.platform.LocalDensity.current.fontScale > 1.3f) {
+                    // Very large text: full-width buttons, one per line, so no label is cut (#82).
+                    Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Button(onClick = onTake, modifier = Modifier.fillMaxWidth().defaultMinSize(minHeight = 48.dp)) { Text(takeLabel) }
+                        FilledTonalButton(onClick = onSnooze, modifier = Modifier.fillMaxWidth().defaultMinSize(minHeight = 48.dp)) { Text("Snooze") }
+                        TextButton(onClick = onSkip, modifier = Modifier.fillMaxWidth().defaultMinSize(minHeight = 48.dp)) { Text("Skip") }
                     }
-                    FilledTonalButton(
-                        onClick = onSnooze,
-                        modifier = Modifier
-                            .weight(1f)
-                            .defaultMinSize(minHeight = 44.dp)
+                } else {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        Text("Snooze", maxLines = 1, softWrap = false)
-                    }
-                    TextButton(
-                        onClick = onSkip,
-                        modifier = Modifier
-                            .weight(0.8f)
-                            .defaultMinSize(minHeight = 44.dp)
-                    ) {
-                        Text("Skip")
+                        Button(
+                            onClick = onTake,
+                            modifier = Modifier
+                                .weight(1.2f)
+                                .defaultMinSize(minHeight = 44.dp)
+                        ) {
+                            Text(takeLabel)
+                        }
+                        FilledTonalButton(
+                            onClick = onSnooze,
+                            modifier = Modifier
+                                .weight(1f)
+                                .defaultMinSize(minHeight = 44.dp)
+                        ) {
+                            Text("Snooze", maxLines = 1, softWrap = false)
+                        }
+                        TextButton(
+                            onClick = onSkip,
+                            modifier = Modifier
+                                .weight(0.8f)
+                                .defaultMinSize(minHeight = 44.dp)
+                        ) {
+                            Text("Skip")
+                        }
                     }
                 }
             }
