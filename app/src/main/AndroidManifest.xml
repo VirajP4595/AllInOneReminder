@@ -52,6 +52,7 @@
         <activity
             android:name=".alarm.AlarmActivity"
             android:exported="false"
+            android:taskAffinity=""
             android:showWhenLocked="true"
             android:turnScreenOn="true"
             android:showForAllUsers="true"
