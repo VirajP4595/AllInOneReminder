@@ -417,5 +417,11 @@ fun SettingsNavCard(
 }
 
 /** Black or white, whichever is readable on [background] (profile colours can be light). */
-fun readableTextColor(background: Color): Color =
-    if (background.luminance() > 0.4f) Color(0xFF1B1B1B) else Color.White
+fun readableTextColor(background: Color): Color {
+    // Pick whichever of near-black / white has the higher WCAG contrast ratio on this colour.
+    val l = background.luminance()
+    val dark = Color(0xFF1B1B1B)
+    val contrastWithWhite = 1.05f / (l + 0.05f)
+    val contrastWithDark = (l + 0.05f) / (dark.luminance() + 0.05f)
+    return if (contrastWithDark >= contrastWithWhite) dark else Color.White
+}

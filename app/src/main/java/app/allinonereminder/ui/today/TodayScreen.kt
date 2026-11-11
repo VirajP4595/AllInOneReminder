@@ -703,28 +703,7 @@ private fun OccurrenceTimelineCard(
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Box(
-                        modifier = Modifier
-                            .size(40.dp)
-                            .clip(CircleShape)
-                            .background(MaterialTheme.colorScheme.primaryContainer),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Icon(
-                            imageVector = when (item.type) {
-                                ItemType.MEDICINE -> Icons.Default.Medication
-                                ItemType.INJECTION -> Icons.Default.Vaccines
-                                ItemType.WATER_DRINK -> Icons.Default.WaterDrop
-                                ItemType.FOOD -> Icons.Default.Restaurant
-                                ItemType.EXERCISE -> Icons.Default.FitnessCenter
-                                ItemType.APPOINTMENT -> Icons.Default.Event
-                                else -> Icons.Default.HealthAndSafety
-                            },
-                            contentDescription = item.type.name,
-                            tint = MaterialTheme.colorScheme.onPrimaryContainer,
-                            modifier = Modifier.size(22.dp)
-                        )
-                    }
+                    app.allinonereminder.ui.components.TypeBadge(item.type, size = 40.dp)
                     Spacer(modifier = Modifier.width(12.dp))
                     Text(
                         text = formattedTime,
@@ -743,17 +722,13 @@ private fun OccurrenceTimelineCard(
                         text = item.name,
                         style = MaterialTheme.typography.titleMedium
                     )
-                    val doseLabel = if (item.type == ItemType.APPOINTMENT) {
+                    val doseText = if (item.type == ItemType.APPOINTMENT) {
                         effectiveDoseAmount(uiModel.schedule, item)
                     } else {
-                        listOf(
-                            effectiveDoseAmount(uiModel.schedule, item),
-                            item.dosageUnit,
-                            item.form?.takeUnless { it.equals(item.dosageUnit, ignoreCase = true) }
-                        ).filter { !it.isNullOrBlank() }.joinToString(" ")
+                        doseLabel(uiModel.schedule, item)
                     }
                     Text(
-                        text = doseLabel,
+                        text = doseText,
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )

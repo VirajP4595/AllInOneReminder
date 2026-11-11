@@ -640,7 +640,7 @@ fun AlarmItemCard(
             val doseDesc = if (isAppointment) {
                 effectiveDoseAmount(uiModel.schedule, uiModel.item)
             } else {
-                "${effectiveDoseAmount(uiModel.schedule, uiModel.item)} ${uiModel.item.dosageUnit} ${uiModel.item.form ?: ""}".trim()
+                app.allinonereminder.model.doseLabel(uiModel.schedule, uiModel.item)
             }
             Text(
                 text = doseDesc,
