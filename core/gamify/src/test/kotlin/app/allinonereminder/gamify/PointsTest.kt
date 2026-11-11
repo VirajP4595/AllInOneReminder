@@ -191,7 +191,7 @@ class PointsTest {
     }
 
     @Test
-    fun `skipped occurrences earn zero with the right reason`() {
+    fun `skipped occurrences earn one point for an honest skip and zero otherwise`() {
         val entries = ledger(
             Fx.occurrence(
                 id = "skipped",
@@ -213,13 +213,13 @@ class PointsTest {
             ),
         )
 
-        assertEquals(listOf(0, 0, 0, 0), entries.map { it.points })
+        assertEquals(listOf(0, 0, 0, 1), entries.map { it.points })
         assertEquals(
             listOf(
                 PointsReason.DOCTOR_STOPPED,
                 PointsReason.NOT_TAKEN,
                 PointsReason.NOT_TAKEN,
-                PointsReason.NOT_TAKEN,
+                PointsReason.HONEST_SKIP,
             ),
             entries.map { it.reason },
         )

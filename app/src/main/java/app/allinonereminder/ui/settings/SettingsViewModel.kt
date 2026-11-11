@@ -46,7 +46,8 @@ class SettingsViewModel @Inject constructor(
     private val settingsRepository: SettingsRepository,
     private val backupManager: BackupManager,
     private val activitySource: ActivitySource,
-    private val alarmCoordinator: app.allinonereminder.alarm.AlarmCoordinator
+    private val alarmCoordinator: app.allinonereminder.alarm.AlarmCoordinator,
+    private val csvExporter: app.allinonereminder.backup.CsvExporter
 ) : ViewModel() {
 
     private val _isProcessing = MutableStateFlow(false)
@@ -112,6 +113,20 @@ class SettingsViewModel @Inject constructor(
         runCatching { app.allinonereminder.backup.AutoBackup.disable(context) }
         _message.value = "Automatic backup is off. Existing backup files were kept."
         refreshAutoBackup()
+    }
+
+    /** [kind] is "medicines" or "history". */
+    fun exportCsv(uri: Uri, kind: String) {
+        viewModelScope.launch {
+            try {
+                context.contentResolver.openOutputStream(uri)?.use { out ->
+                    if (kind == "history") csvExporter.writeDoseHistory(out) else csvExporter.writeMedicineList(out)
+                } ?: throw IllegalStateException("no stream")
+                _message.value = if (kind == "history") "Dose history saved (last 90 days)" else "Medicine list saved"
+            } catch (e: Exception) {
+                _error.value = "Could not save the file"
+            }
+        }
     }
 
     fun backUpNow() {

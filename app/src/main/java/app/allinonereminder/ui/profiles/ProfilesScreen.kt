@@ -13,6 +13,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import kotlinx.coroutines.launch
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -139,20 +140,12 @@ private fun ProfileCard(
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Box(
-                        modifier = Modifier
-                            .size(44.dp)
-                            .clip(CircleShape)
-                            .background(Color(prof.colorArgb)),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text(
-                            text = prof.name.take(1).uppercase(),
-                            color = app.allinonereminder.ui.components.readableTextColor(Color(prof.colorArgb)),
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 20.sp
-                        )
-                    }
+                    app.allinonereminder.ui.components.ProfileAvatar(
+                        name = prof.name,
+                        colorArgb = prof.colorArgb,
+                        photoPath = prof.photoPath,
+                        size = 48.dp
+                    )
                     Spacer(modifier = Modifier.width(12.dp))
                     Column {
                         Text(text = prof.name, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
@@ -161,6 +154,13 @@ private fun ProfileCard(
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
+                        if (!prof.allergies.isNullOrBlank()) {
+                            Text(
+                                text = "Allergies: ${prof.allergies}",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.error
+                            )
+                        }
                     }
                 }
 
@@ -228,6 +228,24 @@ private fun ProfileEditDialog(
     onSave: (Profile, List<MealAnchor>) -> Unit
 ) {
     var name by remember { mutableStateOf(profile.name) }
+    var birthYear by remember { mutableStateOf(profile.birthYear?.toString() ?: "") }
+    var allergies by remember { mutableStateOf(profile.allergies ?: "") }
+    var notes by remember { mutableStateOf(profile.notes ?: "") }
+    var photoPath by remember { mutableStateOf(profile.photoPath) }
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val scope = rememberCoroutineScope()
+    val photoPicker = androidx.activity.compose.rememberLauncherForActivityResult(
+        contract = androidx.activity.result.contract.ActivityResultContracts.PickVisualMedia()
+    ) { uri ->
+        if (uri != null) {
+            scope.launch {
+                runCatching {
+                    val id = app.allinonereminder.ui.util.PhotoStorageHelper.saveAndCompressPhoto(context, uri)
+                    photoPath = app.allinonereminder.ui.util.PhotoStorageHelper.getPhotoFile(context, id).absolutePath
+                }
+            }
+        }
+    }
     var selectedColor by remember { mutableStateOf(Color(profile.colorArgb)) }
     var currentAnchors by remember { mutableStateOf(anchors) }
 
@@ -241,11 +259,57 @@ private fun ProfileEditDialog(
                     .verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    app.allinonereminder.ui.components.ProfileAvatar(
+                        name = name.ifBlank { "?" },
+                        colorArgb = selectedColor.toArgb(),
+                        photoPath = photoPath,
+                        size = 56.dp
+                    )
+                    Spacer(modifier = Modifier.width(12.dp))
+                    Column {
+                        TextButton(onClick = {
+                            photoPicker.launch(
+                                androidx.activity.result.PickVisualMediaRequest(
+                                    androidx.activity.result.contract.ActivityResultContracts.PickVisualMedia.ImageOnly
+                                )
+                            )
+                        }) { Text(if (photoPath == null) "Add photo" else "Change photo") }
+                        if (photoPath != null) {
+                            TextButton(onClick = { photoPath = null }) { Text("Remove photo") }
+                        }
+                    }
+                }
+
                 OutlinedTextField(
                     value = name,
                     onValueChange = { name = it },
                     label = { Text("Profile Name") },
                     singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+                OutlinedTextField(
+                    value = birthYear,
+                    onValueChange = { v -> birthYear = v.filter { it.isDigit() }.take(4) },
+                    label = { Text("Birth year (optional)") },
+                    singleLine = true,
+                    keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
+                        keyboardType = androidx.compose.ui.text.input.KeyboardType.Number
+                    ),
+                    modifier = Modifier.fillMaxWidth()
+                )
+                OutlinedTextField(
+                    value = allergies,
+                    onValueChange = { allergies = it.take(200) },
+                    label = { Text("Allergies (optional)") },
+                    placeholder = { Text("e.g. Penicillin") },
+                    modifier = Modifier.fillMaxWidth()
+                )
+                OutlinedTextField(
+                    value = notes,
+                    onValueChange = { notes = it.take(500) },
+                    label = { Text("Notes for the doctor (optional)") },
+                    minLines = 2,
                     modifier = Modifier.fillMaxWidth()
                 )
 
@@ -308,9 +372,14 @@ private fun ProfileEditDialog(
         confirmButton = {
             Button(
                 onClick = {
+                    val year = birthYear.toIntOrNull()?.takeIf { it in 1900..java.time.Year.now().value }
                     val updated = profile.copy(
                         name = name.trim(),
                         colorArgb = selectedColor.toArgb(),
+                        photoPath = photoPath,
+                        birthYear = year,
+                        allergies = allergies.trim().ifEmpty { null },
+                        notes = notes.trim().ifEmpty { null },
                         updatedAt = System.currentTimeMillis()
                     )
                     onSave(updated, currentAnchors)

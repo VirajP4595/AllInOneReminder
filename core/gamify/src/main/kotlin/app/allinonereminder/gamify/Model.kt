@@ -88,6 +88,8 @@ enum class PointsReason {
     OUTSIDE_WINDOW,
     DUPLICATE_ACTION,
     NOT_TAKEN,
+    /** Skipped with a reason: a small reward for an honest log, so nobody marks "Taken" to keep points. */
+    HONEST_SKIP,
     DOCTOR_STOPPED,
     NOT_GAMIFIED,
     MISSING_ACTED_AT,

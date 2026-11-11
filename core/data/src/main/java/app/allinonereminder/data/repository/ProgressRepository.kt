@@ -45,7 +45,8 @@ data class DayAdherence(
 
 class ProgressRepository(
     private val occurrenceDao: OccurrenceDao,
-    private val itemDao: ItemDao
+    private val itemDao: ItemDao,
+    private val scheduleDao: app.allinonereminder.data.local.dao.ScheduleDao? = null
 ) {
     private val onTimeWindow: Duration = Duration.ofMinutes(30)
 
@@ -60,12 +61,17 @@ class ProgressRepository(
 
         val occurrenceEntities = occurrenceDao.getOccurrencesBetweenSync(fromTime, toTime)
         val allItems = itemDao.getAllSync().associateBy { it.id }
+        // As-needed doses earn no points: rewarding them would encourage extra doses (#85).
+        val asNeededScheduleIds = scheduleDao?.getAllSync()
+            ?.filter { it.recurrence == app.allinonereminder.model.RecurrenceType.PRN }
+            ?.map { it.id }?.toSet() ?: emptySet()
 
         val records = occurrenceEntities.mapNotNull { entity ->
             val occ = entity.toDomain()
             if (profileId != null && occ.profileId != profileId) return@mapNotNull null
             val item = allItems[occ.itemId]?.toDomain() ?: return@mapNotNull null
             if (item.isTestAlarm) return@mapNotNull null
+            if (occ.scheduleId in asNeededScheduleIds) return@mapNotNull null
             mapToOccurrenceRecord(occ, item)
         }
 

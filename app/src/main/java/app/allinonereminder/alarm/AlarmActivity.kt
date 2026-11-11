@@ -17,6 +17,8 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.border
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -551,23 +553,41 @@ fun AlarmScreenContent(
                     .background(profileColor)
                     .padding(top = 28.dp, bottom = 24.dp, start = 24.dp, end = 24.dp)
             ) {
-                Text(
-                    text = if (dueAt != null) {
-                        java.time.Instant.ofEpochMilli(dueAt).atZone(java.time.ZoneId.systemDefault())
-                            .format(AppTime.formatter())
-                    } else "",
-                    color = headerText,
-                    style = MaterialTheme.typography.displaySmall
-                )
-                Text(
-                    text = when {
-                        firstProfile == null -> "Time for your reminder"
-                        state.items.size > 1 -> "Time for ${firstProfile.name}'s reminders"
-                        else -> "Time for ${firstProfile.name}'s reminder"
-                    },
-                    color = headerText.copy(alpha = 0.9f),
-                    style = MaterialTheme.typography.titleMedium
-                )
+                // Person first (#80): on a shared phone the first question is "whose dose is it?"
+                val people = state.items.mapNotNull { it.profile }.distinctBy { it.id }
+                val time = if (dueAt != null) {
+                    java.time.Instant.ofEpochMilli(dueAt).atZone(java.time.ZoneId.systemDefault())
+                        .format(AppTime.formatter())
+                } else ""
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    if (firstProfile != null) {
+                        app.allinonereminder.ui.components.ProfileAvatar(
+                            name = firstProfile.name,
+                            colorArgb = firstProfile.colorArgb,
+                            photoPath = firstProfile.photoPath,
+                            size = 64.dp,
+                            modifier = Modifier.border(3.dp, headerText.copy(alpha = 0.8f), CircleShape)
+                        )
+                        Spacer(modifier = Modifier.width(16.dp))
+                    }
+                    Column {
+                        Text(
+                            text = when {
+                                people.isEmpty() -> "Your reminder"
+                                people.size == 1 -> people.first().name
+                                else -> people.joinToString(" & ") { it.name }
+                            },
+                            color = headerText,
+                            style = MaterialTheme.typography.headlineLarge,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Text(
+                            text = if (state.items.size > 1) "$time · ${state.items.size} reminders" else time,
+                            color = headerText.copy(alpha = 0.9f),
+                            style = MaterialTheme.typography.titleLarge
+                        )
+                    }
+                }
             }
 
             Spacer(modifier = Modifier.height(16.dp))

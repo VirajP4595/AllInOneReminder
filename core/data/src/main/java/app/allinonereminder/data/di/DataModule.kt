@@ -216,10 +216,12 @@ object DataModule {
     @Singleton
     fun provideProgressRepository(
         occurrenceDao: OccurrenceDao,
-        itemDao: ItemDao
+        itemDao: ItemDao,
+        scheduleDao: app.allinonereminder.data.local.dao.ScheduleDao
     ): ProgressRepository = ProgressRepository(
         occurrenceDao = occurrenceDao,
-        itemDao = itemDao
+        itemDao = itemDao,
+        scheduleDao = scheduleDao
     )
 }
 

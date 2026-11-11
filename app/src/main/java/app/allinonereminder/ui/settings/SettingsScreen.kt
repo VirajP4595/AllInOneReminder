@@ -63,6 +63,7 @@ fun SettingsScreen(
     onEnableAutoBackup: (Uri, String) -> Unit = { _, _ -> },
     onDisableAutoBackup: () -> Unit = {},
     onBackUpNow: () -> Unit = {},
+    onExportCsv: (Uri, String) -> Unit = { _, _ -> },
     onInspectRestore: (Uri, String) -> Unit = { _, _ -> },
     onConfirmRestore: (Uri, String) -> Unit = { _, _ -> },
     onDismissRestorePreview: () -> Unit = {},
@@ -114,6 +115,11 @@ fun SettingsScreen(
         pickingSoundFor = level
         runCatching { ringtoneLauncher.launch(intent) }.onFailure { pickingSoundFor = null }
     }
+
+    var pendingCsvKind by remember { mutableStateOf("medicines") }
+    val csvLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.CreateDocument("text/csv")
+    ) { uri -> if (uri != null) onExportCsv(uri, pendingCsvKind) }
 
     var showAutoBackupDialog by remember { mutableStateOf(false) }
     var autoBackupPassphrase by remember { mutableStateOf("") }
@@ -492,6 +498,26 @@ fun SettingsScreen(
 
             // Backup & Restore Section (§17 / M6)
             Text("Backup & Restore", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(top = 8.dp))
+            // CSV for a doctor visit (#91)
+            SectionCard(title = "Share with a doctor", icon = Icons.Default.Description) {
+                Text(
+                    text = "Saves a spreadsheet file (CSV) you can print or send. Nothing is sent by the app.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    FilledTonalButton(onClick = {
+                        pendingCsvKind = "medicines"
+                        csvLauncher.launch("medicines-${java.time.LocalDate.now()}.csv")
+                    }) { Text("Medicine list") }
+                    FilledTonalButton(onClick = {
+                        pendingCsvKind = "history"
+                        csvLauncher.launch("dose-history-${java.time.LocalDate.now()}.csv")
+                    }) { Text("Dose history") }
+                }
+            }
+
             // Automatic weekly backup (issue #27)
             SectionCard(title = "Automatic weekly backup", icon = Icons.Default.CloudSync) {
                 val auto = uiState.autoBackup

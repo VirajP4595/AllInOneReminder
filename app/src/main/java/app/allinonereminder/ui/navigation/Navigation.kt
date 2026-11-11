@@ -80,7 +80,8 @@ fun MainAppNavigation(
     mealAnchorRepository: MealAnchorRepository,
     alarmCoordinator: AlarmCoordinator,
     sampleDataSeeder: SampleDataSeeder,
-    testAlarmScheduler: app.allinonereminder.alarm.TestAlarmScheduler
+    testAlarmScheduler: app.allinonereminder.alarm.TestAlarmScheduler,
+    shortcutAction: String? = null
 ) {
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
@@ -94,6 +95,18 @@ fun MainAppNavigation(
     val startDestination = if (onboardingCompleted) Screen.Today.route else Screen.Onboarding.route
 
     val showBottomBar = currentRoute in BOTTOM_BAR_SCREENS.map { it.route }
+
+    // Launcher shortcuts (#84)
+    LaunchedEffect(shortcutAction, onboardingCompleted) {
+        if (!onboardingCompleted) return@LaunchedEffect
+        when (shortcutAction) {
+            "app.allinonereminder.action.ADD_REMINDER" -> navController.navigate(Screen.ItemAdd.route)
+            "app.allinonereminder.action.OPEN_TODAY" -> navController.navigate(Screen.Today.route) {
+                popUpTo(navController.graph.findStartDestination().id)
+                launchSingleTop = true
+            }
+        }
+    }
 
     Scaffold(
         bottomBar = {
@@ -453,6 +466,7 @@ fun MainAppNavigation(
                     onEnableAutoBackup = viewModel::enableAutoBackup,
                     onDisableAutoBackup = viewModel::disableAutoBackup,
                     onBackUpNow = viewModel::backUpNow,
+                    onExportCsv = viewModel::exportCsv,
                     onInspectRestore = viewModel::inspectRestore,
                     onConfirmRestore = viewModel::confirmRestore,
                     onDismissRestorePreview = viewModel::dismissRestorePreview,

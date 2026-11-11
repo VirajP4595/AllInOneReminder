@@ -58,6 +58,9 @@ class SettingsRepository(
         val KEY_THEME_MODE = stringPreferencesKey("theme_mode")
         val KEY_WEEKEND_DAYS = stringPreferencesKey("weekend_days")
         val KEY_CAREGIVER_NAME = stringPreferencesKey("caregiver_name")
+        val KEY_SIMPLE_PROFILE = stringPreferencesKey("simple_mode_profile")
+        val KEY_SIMPLE_PIN = stringPreferencesKey("simple_mode_pin_hash")
+        val KEY_POINTS_HIDDEN = stringPreferencesKey("points_hidden_profiles")
         val KEY_NEXT_ALARM_AT = androidx.datastore.preferences.core.longPreferencesKey("next_alarm_at")
 
         /** Stored sound value meaning "use the phone's default sound". Older installs stored names like "alarm". */
@@ -84,6 +87,52 @@ class SettingsRepository(
 
     suspend fun setWeekendDays(days: Set<Int>) {
         dataStore.edit { it[KEY_WEEKEND_DAYS] = days.filter { d -> d in 1..7 }.sorted().joinToString(",") }
+    }
+
+    /** Simple mode (#79): the profile the phone is locked to, or null when off. */
+    val simpleModeProfileFlow: Flow<String?> = dataStore.data.map { it[KEY_SIMPLE_PROFILE] }
+
+    /** Turns simple mode on for [profileId]; the PIN is kept only as a salted SHA-256 hash. */
+    suspend fun enableSimpleMode(profileId: String, pin: String) {
+        val salt = UUID.randomUUID().toString()
+        dataStore.edit {
+            it[KEY_SIMPLE_PROFILE] = profileId
+            it[KEY_SIMPLE_PIN] = salt + ":" + sha256(salt + pin)
+        }
+    }
+
+    /** Leaves simple mode if [pin] matches. Returns whether it did. */
+    suspend fun disableSimpleMode(pin: String): Boolean {
+        val stored = dataStore.data.first()[KEY_SIMPLE_PIN] ?: return true.also { clearSimpleMode() }
+        val salt = stored.substringBefore(':')
+        val hash = stored.substringAfter(':')
+        if (sha256(salt + pin) != hash) return false
+        clearSimpleMode()
+        return true
+    }
+
+    private suspend fun clearSimpleMode() {
+        dataStore.edit {
+            it.remove(KEY_SIMPLE_PROFILE)
+            it.remove(KEY_SIMPLE_PIN)
+        }
+    }
+
+    private fun sha256(text: String): String =
+        java.security.MessageDigest.getInstance("SHA-256").digest(text.toByteArray(Charsets.UTF_8))
+            .joinToString("") { "%02x".format(it) }
+
+    /** Profiles whose points, levels and badges are hidden on Today (#85). */
+    val pointsHiddenFlow: Flow<Set<String>> = dataStore.data.map { prefs ->
+        prefs[KEY_POINTS_HIDDEN]?.split(',')?.filter { it.isNotBlank() }?.toSet() ?: emptySet()
+    }
+
+    suspend fun setPointsHidden(profileId: String, hidden: Boolean) {
+        dataStore.edit { prefs ->
+            val current = prefs[KEY_POINTS_HIDDEN]?.split(',')?.filter { it.isNotBlank() }?.toMutableSet() ?: mutableSetOf()
+            if (hidden) current += profileId else current -= profileId
+            prefs[KEY_POINTS_HIDDEN] = current.joinToString(",")
+        }
     }
 
     /** Name of whoever usually marks doses on this shared phone; saved with each Taken/Skip (#80). */

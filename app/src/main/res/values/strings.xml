@@ -1,5 +1,9 @@
 <resources>
     <string name="app_name">All-in-One Reminder</string>
     <string name="widget_description">Shows upcoming reminder and today\'s health activity rings.</string>
+    <string name="shortcut_add_short">Add reminder</string>
+    <string name="shortcut_add_long">Add a new reminder</string>
+    <string name="shortcut_today_short">Today</string>
+    <string name="shortcut_today_long">Open today\'s reminders</string>
 </resources>
 

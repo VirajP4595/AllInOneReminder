@@ -65,7 +65,15 @@ class ProfilesViewModel @Inject constructor(
             if (existing != null) {
                 profileRepository.updateProfile(profile, deviceId)
             } else {
-                profileRepository.createProfile(profile.name, profile.colorArgb, deviceId = deviceId)
+                profileRepository.createProfile(
+                    profile.name,
+                    profile.colorArgb,
+                    photoPath = profile.photoPath,
+                    birthYear = profile.birthYear,
+                    allergies = profile.allergies,
+                    notes = profile.notes,
+                    deviceId = deviceId
+                )
             }
 
             anchors.forEach { anchor ->

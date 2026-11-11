@@ -416,6 +416,11 @@ class BackupManager @Inject constructor(
                 put("id", p.id)
                 put("name", p.name)
                 put("colorArgb", p.colorArgb)
+                // Photo: the file itself is in photos/; keep only its name.
+                putOpt("photoFile", p.photoPath?.let { File(it).name })
+                putOpt("birthYear", p.birthYear)
+                putOpt("allergies", p.allergies)
+                putOpt("notes", p.notes)
                 put("createdAt", p.createdAt)
                 put("updatedAt", p.updatedAt)
                 putOpt("deletedAt", p.deletedAt)
@@ -433,6 +438,11 @@ class BackupManager @Inject constructor(
                     id = o.getString("id"),
                     name = o.getString("name"),
                     colorArgb = o.getInt("colorArgb"),
+                    photoPath = if (o.isNull("photoFile")) null else safeArchiveFileName(o.getString("photoFile"))
+                        ?.let { File(File(context.filesDir, "photos"), it).absolutePath },
+                    birthYear = if (o.isNull("birthYear")) null else o.getInt("birthYear"),
+                    allergies = if (o.isNull("allergies")) null else o.getString("allergies"),
+                    notes = if (o.isNull("notes")) null else o.getString("notes"),
                     createdAt = o.getLong("createdAt"),
                     updatedAt = o.getLong("updatedAt"),
                     deletedAt = if (o.isNull("deletedAt")) null else o.getLong("deletedAt")
