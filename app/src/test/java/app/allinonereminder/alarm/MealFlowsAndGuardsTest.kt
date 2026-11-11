@@ -817,16 +817,19 @@ class MealFlowsAndGuardsTest {
         )
 
         val originalDue = now + 120 * 60_000L
+        // This hand-made row is not one the scheduler plans. Planned in the past and touched after
+        // the schedule, so a reschedule triggered by the earlier steps does not retire it as
+        // SUPERSEDED (a retired row is never re-timed, which made this test fail at random).
         val dadOcc = Occurrence(
             id = "occ-dad-1",
             itemId = dadItem.id,
             scheduleId = "sched-dad-lunch",
             profileId = dad.id,
-            plannedAt = originalDue,
+            plannedAt = now - 5 * 60_000L,
             dueAt = originalDue,
             status = OccurrenceStatus.PENDING,
             deviceId = "dev-1",
-            updatedAt = now
+            updatedAt = now + 60_000L
         )
         occurrenceRepo.upsertOccurrences(listOf(dadOcc))
 
