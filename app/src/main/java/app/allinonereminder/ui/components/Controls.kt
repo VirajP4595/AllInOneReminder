@@ -76,7 +76,8 @@ fun AppTextField(
     keyboardOptions: KeyboardOptions = KeyboardOptions.Default,
     keyboardActions: KeyboardActions = KeyboardActions.Default,
     singleLine: Boolean = false,
-    maxLines: Int = if (singleLine) 1 else Int.MAX_VALUE
+    maxLines: Int = if (singleLine) 1 else Int.MAX_VALUE,
+    minLines: Int = 1
 ) {
     OutlinedTextField(
         value = value,
@@ -94,6 +95,7 @@ fun AppTextField(
         keyboardActions = keyboardActions,
         singleLine = singleLine,
         maxLines = maxLines,
+        minLines = minLines,
         shape = RoundedCornerShape(16.dp),
         colors = OutlinedTextFieldDefaults.colors(
             focusedContainerColor = MaterialTheme.colorScheme.surfaceContainerLowest,
