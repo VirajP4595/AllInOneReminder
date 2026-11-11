@@ -2,10 +2,9 @@ package app.allinonereminder.screenshots
 
 import android.graphics.Bitmap
 import androidx.compose.runtime.Composable
-import androidx.compose.ui.graphics.asAndroidBitmap
-import androidx.compose.ui.test.captureToImage
-import androidx.compose.ui.test.junit4.createComposeRule
-import androidx.compose.ui.test.onRoot
+import android.graphics.Canvas
+import androidx.activity.ComponentActivity
+import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import app.allinonereminder.alarm.AlarmItemUiModel
 import app.allinonereminder.alarm.AlarmScreenContent
@@ -43,7 +42,7 @@ import java.io.File
 abstract class ScreenshotBase(private val suffix: String) {
 
     @get:Rule
-    val compose = createComposeRule()
+    val compose = createAndroidComposeRule<ComponentActivity>()
 
     @Before
     fun onlyWhenAsked() {
@@ -53,7 +52,10 @@ abstract class ScreenshotBase(private val suffix: String) {
     private fun shot(name: String, content: @Composable () -> Unit) {
         compose.setContent { content() }
         compose.waitForIdle()
-        val bitmap = compose.onRoot().captureToImage().asAndroidBitmap()
+        // Draw the window directly; PixelCopy (captureToImage) does not complete under Robolectric.
+        val view = compose.activity.window.decorView
+        val bitmap = Bitmap.createBitmap(view.width, view.height, Bitmap.Config.ARGB_8888)
+        view.draw(Canvas(bitmap))
         val dir = File(System.getProperty("screenshots.dir") ?: "build/screenshots").apply { mkdirs() }
         File(dir, "$name$suffix.png").outputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }
     }
@@ -72,7 +74,7 @@ abstract class ScreenshotBase(private val suffix: String) {
 @Config(sdk = [34], qualifiers = "w393dp-h852dp-xhdpi")
 class LightScreenshots : ScreenshotBase("")
 
-@Config(sdk = [34], qualifiers = "w393dp-h852dp-xhdpi-night")
+@Config(sdk = [34], qualifiers = "w393dp-h852dp-night-xhdpi")
 class DarkScreenshots : ScreenshotBase("_dark")
 
 @Composable
